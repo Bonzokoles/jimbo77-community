@@ -226,10 +226,7 @@ async function sendViaSMTP(to: string, subject: string, htmlContent: string, env
             throw new Error(`SMTP: Błąd autoryzacji. Sprawdź:
 1. SMTP_USER i SMTP_PASS są poprawne
 2. Używasz hasła aplikacji (QQ, Gmail wymagają)
-3. Serwer nie blokuje konta (za dużo nieudanych prób)`SMTP: Błąd autoryzacji. Sprawdź:
-1. SMTP_USER i SMTP_PASS są poprawne
-2. Używasz hasła aplikacji (QQ, Gmail wymagają)
-3. Serwer nie blokuje konta (za dużo nieudanych prób）`);
+3. Serwer nie blokuje konta (za dużo nieudanych prób)`);
         }
         
         await sendCommand(writer, reader, `MAIL FROM: <${SMTP_CONFIG.from}>`, 250);

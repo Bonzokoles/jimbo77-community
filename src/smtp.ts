@@ -1,7 +1,7 @@
 
 import { connect } from 'cloudflare:sockets';
 
-const DEFAULT_FROM_NAME = '论坛管理员';
+const DEFAULT_FROM_NAME = 'Jimbo77 Community';
 
 // Timeout helper
 function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
@@ -223,7 +223,10 @@ async function sendViaSMTP(to: string, subject: string, htmlContent: string, env
         }
         
         if (!authSuccess) {
-            throw new Error(`SMTP 认证失败。请检查：\n1. SMTP_USER 和 SMTP_PASS 是否正确\n2. 是否使用了应用专用密码（QQ企业邮箱、Gmail等需要）\n3. 邮箱服务器是否限制了登录（如频繁失败导致临时锁定）`);
+            throw new Error(`SMTP: Błąd autoryzacji. Sprawdź:
+1. SMTP_USER i SMTP_PASS są poprawne
+2. Używasz hasła aplikacji (QQ, Gmail wymagają)
+3. Serwer nie blokuje konta (za dużo nieudanych prób)`);
         }
         
         await sendCommand(writer, reader, `MAIL FROM: <${SMTP_CONFIG.from}>`, 250);
@@ -279,13 +282,13 @@ ${htmlContent}
     }
 }
 
-// Resend API Send Function
+// Funkcja wysyłania przez Resend API
 async function sendViaResend(env: any, to: string, subject: string, htmlContent: string) {
     if (!env.RESEND_KEY) {
-        throw new Error('环境变量缺少 RESEND_KEY');
+        throw new Error('Brak zmiennej środowiskowej RESEND_KEY');
     }
     
-    console.log('[Resend] Sending email via API...');
+    console.log('[Resend] Wysyłanie e-maila przez API...');
     const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -302,43 +305,43 @@ async function sendViaResend(env: any, to: string, subject: string, htmlContent:
 
     if (!res.ok) {
         const err = await res.text();
-        console.error('[Resend] API Error:', err);
-        throw new Error(`Resend API 错误：${err}`);
+        console.error('[Resend] Błąd API:', err);
+        throw new Error(`Błąd Resend API: ${err}`);
     } else {
-        console.log('[Resend] Email sent successfully');
+        console.log('[Resend] E-mail wysłany pomyślnie');
     }
 }
 
-// Main export
+// Główna funkcja eksportu
 export async function sendEmail(to: string, subject: string, htmlContent: string, env?: any) {
-    console.log(`[Email] Starting email send to ${to} - Subject: ${subject}`);
+    console.log(`[Email] Rozpoczynanie wysyłki e-maila do ${to} - Temat: ${subject}`);
     
-    // 1. Check MX Records first
+    // 1. Sprawdź rekordy MX
     try {
         if (!(await checkMX(to))) {
-            throw new Error(`邮箱域名无效（未找到 MX 记录：${to}）`);
+            throw new Error(`Nieprawidłowa domena e-mail (${to} - brak rekordów MX)`);
         }
     } catch (e) {
-        console.error('[Email] MX check failed:', e);
+        console.error('[Email] Błąd sprawdzenia MX:', e);
         throw e;
     }
 
-    // Try Resend if configured
+    // Spróbuj Resend jeśli skonfigurowany
     if (env && env.RESEND_KEY) {
         try {
             await sendViaResend(env, to, subject, htmlContent);
             return;
         } catch (e) {
-            console.error('[Resend] Failed, falling back to SMTP if possible...', e);
+            console.error('[Resend] Nieudane, powrót do SMTP...', e);
         }
     }
 
-    // Fallback to SMTP
+    // Powrót do SMTP
     try {
         await sendViaSMTP(to, subject, htmlContent, env || {});
-        console.log(`[Email] ✓ Email successfully sent to ${to}`);
+        console.log(`[Email] ✓ E-mail wysłany pomyślnie do ${to}`);
     } catch (e) {
-        console.error('[Email] Failed to send email:', e);
+        console.error('[Email] Nie udało się wysłać e-maila:', e);
         throw e;
     }
 }
