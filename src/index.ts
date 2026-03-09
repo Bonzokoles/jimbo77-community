@@ -1,4 +1,4 @@
-
+﻿
 import { sendEmail } from './smtp';
 import { generateIdenticon } from './identicon';
 import { uploadImage, deleteImage, listAllKeys, getPublicUrl, getKeyFromUrl, S3Env } from './s3';
@@ -240,7 +240,7 @@ export default {
 		// Ensure the database schema exists before anything else.
 		const ensureSchema = async () => {
 			try {
-				await env.cforum_db.prepare('SELECT 1 FROM posts LIMIT 1').first();
+				await env.jimbo77_community_db.prepare('SELECT 1 FROM posts LIMIT 1').first();
 				return;
 			} catch (err: any) {
 				console.warn('Database schema missing, initializing', err);
@@ -335,14 +335,14 @@ export default {
 			];
 			for (const stmt of stmts) {
 				try {
-					await env.cforum_db.prepare(stmt).run();
+					await env.jimbo77_community_db.prepare(stmt).run();
 				} catch (e) {
 					console.error('Error running schema statement', e, stmt);
 				}
 			}
 			// verify posts table exists now
 			try {
-				await env.cforum_db.prepare('SELECT 1 FROM posts LIMIT 1').first();
+				await env.jimbo77_community_db.prepare('SELECT 1 FROM posts LIMIT 1').first();
 			} catch (e) {
 				console.error('Failed to verify posts table after init', e);
 			}
@@ -413,8 +413,8 @@ export default {
 		if (url.pathname === '/api/config' && method === 'GET') {
 			try {
 				const [setting, userCount] = await Promise.all([
-					env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'turnstile_enabled'").first<DBSetting>(),
-					env.cforum_db.prepare('SELECT COUNT(*) as count FROM users').first('count')
+					env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'turnstile_enabled'").first<DBSetting>(),
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM users').first('count')
 				]);
 				
 				// Turnstile aktywny tylko gdy włączony w bazie danych ORAZ oba klucze env są skonfigurowane
@@ -440,7 +440,7 @@ export default {
 				const userPayload = await authenticate(request);
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
-				const settings = await env.cforum_db.prepare("SELECT key, value FROM settings").all();
+				const settings = await env.jimbo77_community_db.prepare("SELECT key, value FROM settings").all();
 				const config: any = {
 					turnstile_enabled: false,
 					notify_on_user_delete: false,
@@ -470,7 +470,7 @@ export default {
 				const body = await request.json() as any;
 				const { turnstile_enabled, notify_on_user_delete, notify_on_username_change, notify_on_avatar_change, notify_on_manual_verify } = body;
 				
-				const stmt = env.cforum_db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+				const stmt = env.jimbo77_community_db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 				const batch = [];
 
 				if (turnstile_enabled !== undefined) batch.push(stmt.bind('turnstile_enabled', turnstile_enabled ? '1' : '0'));
@@ -479,7 +479,7 @@ export default {
 				if (notify_on_avatar_change !== undefined) batch.push(stmt.bind('notify_on_avatar_change', notify_on_avatar_change ? '1' : '0'));
 				if (notify_on_manual_verify !== undefined) batch.push(stmt.bind('notify_on_manual_verify', notify_on_manual_verify ? '1' : '0'));
 				
-				if (batch.length > 0) await env.cforum_db.batch(batch);
+				if (batch.length > 0) await env.jimbo77_community_db.batch(batch);
 
 				return jsonResponse({ success: true });
 			} catch (e) {
@@ -489,7 +489,7 @@ export default {
 		
 		// Helper to check Turnstile if enabled
 		const checkTurnstile = async (reqBody: any, ip: string) => {
-			const setting = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'turnstile_enabled'").first<DBSetting>();
+			const setting = await env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'turnstile_enabled'").first<DBSetting>();
 			// Wymagaj weryfikacji tylko gdy włączone w bazie i oba klucze env skonfigurowane (spójne z frontendem)
 			const dbEnabled = setting && setting.value === '1';
 			const siteKey = (env as any).TURNSTILE_SITE_KEY;
@@ -557,7 +557,7 @@ export default {
 					return jsonResponse({ error: 'Missing email or password' }, 400);
 				}
 
-				const user = await env.cforum_db
+				const user = await env.jimbo77_community_db
 					.prepare('SELECT * FROM users WHERE email = ?')
 					.bind(email)
 					.first<DBUser>();
@@ -574,7 +574,7 @@ export default {
 				}
 
 				// Auto-migrate legacy SHA-256 hash to PBKDF2
-				ctx.waitUntil(rehashIfLegacy(user.password, password, user.id, env.cforum_db));
+				ctx.waitUntil(rehashIfLegacy(user.password, password, user.id, env.jimbo77_community_db));
 
 				// TOTP Check
 				if (user.totp_enabled) {
@@ -604,7 +604,7 @@ export default {
 					email: user.email
 				});
 
-				await env.cforum_db.prepare('INSERT INTO sessions (jti, user_id, expires_at) VALUES (?, ?, ?)').bind(jti, user.id, expiresAt).run();
+				await env.jimbo77_community_db.prepare('INSERT INTO sessions (jti, user_id, expires_at) VALUES (?, ?, ?)').bind(jti, user.id, expiresAt).run();
 				await security.logAudit(user.id, 'LOGIN', 'user', String(user.id), { email }, request);
 
 				return jsonResponse({
@@ -641,14 +641,14 @@ export default {
 					if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Username contains restricted keywords' }, 400);
 					
 					// Check Uniqueness
-					const existingUser = await env.cforum_db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').bind(username, user_id).first<{id:number}>();
+					const existingUser = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').bind(username, user_id).first<{id:number}>();
 					if (existingUser) {
 						return jsonResponse({ error: 'Username already taken' }, 409);
 					}
 				}
 
 				// Fetch current user
-				const currentUser = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
+				const currentUser = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
 			if (!currentUser) return jsonResponse({ error: 'User not found' }, 404);
 				if (!currentUser) return jsonResponse({ error: 'User not found' }, 404);
 
@@ -674,10 +674,10 @@ export default {
 					newEmailNotif = email_notifications ? 1 : 0;
 				}
 
-				await env.cforum_db.prepare('UPDATE users SET username = ?, avatar_url = ?, email_notifications = ? WHERE id = ?')
+				await env.jimbo77_community_db.prepare('UPDATE users SET username = ?, avatar_url = ?, email_notifications = ? WHERE id = ?')
 					.bind(newUsername, newAvatarUrl, newEmailNotif, user_id).run();
 
-			const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
+			const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
 			if (!user) return jsonResponse({ error: 'User not found' }, 404);
 				return jsonResponse({
 					success: true,
@@ -707,7 +707,7 @@ export default {
 
 				const user_id = userPayload.id;
 
-				const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
 				if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
 				// Verify Password (Double check for sensitive delete op)
@@ -733,7 +733,7 @@ export default {
 				// Delete User and Data
 				
 				// 1. Delete images (Avatar + Post images)
-				const posts: any = await env.cforum_db.prepare('SELECT content FROM posts WHERE author_id = ?').bind(user_id).all();
+				const posts: any = await env.jimbo77_community_db.prepare('SELECT content FROM posts WHERE author_id = ?').bind(user_id).all();
 				const deletionPromises: Promise<any>[] = [];
 				
 				if (user.avatar_url) {
@@ -752,16 +752,16 @@ export default {
 				}
 
 				// 2. Delete likes/comments ON user's posts (Cascade manually)
-				await env.cforum_db.prepare('DELETE FROM likes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(user_id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(user_id).run();
 
 				// 3. Delete user's activity
-				await env.cforum_db.prepare('DELETE FROM likes WHERE user_id = ?').bind(user_id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE author_id = ?').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE user_id = ?').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE author_id = ?').bind(user_id).run();
 				
 				// 4. Delete posts and user
-				await env.cforum_db.prepare('DELETE FROM posts WHERE author_id = ?').bind(user_id).run();
-				await env.cforum_db.prepare('DELETE FROM users WHERE id = ?').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM posts WHERE author_id = ?').bind(user_id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM users WHERE id = ?').bind(user_id).run();
 				
 				await security.logAudit(userPayload.id, 'DELETE_ACCOUNT', 'user', String(user_id), {}, request);
 
@@ -780,9 +780,9 @@ export default {
 				const secret = new OTPAuth.Secret({ size: 20 });
 				const secretBase32 = secret.base32;
 
-				await env.cforum_db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?').bind(secretBase32, user_id).run();
+				await env.jimbo77_community_db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?').bind(secretBase32, user_id).run();
 
-				const user = await env.cforum_db.prepare('SELECT email FROM users WHERE id = ?').bind(user_id).first<DBUserEmail>();
+				const user = await env.jimbo77_community_db.prepare('SELECT email FROM users WHERE id = ?').bind(user_id).first<DBUserEmail>();
 			if (!user) return jsonResponse({ error: 'User not found' }, 404);
 				
 				await security.logAudit(userPayload.id, 'SETUP_TOTP', 'user', String(user_id), {}, request);
@@ -815,7 +815,7 @@ export default {
 
 				if (!token) return jsonResponse({ error: 'Missing parameters' }, 400);
 
-				const user = await env.cforum_db.prepare('SELECT totp_secret FROM users WHERE id = ?').bind(user_id).first<DBUserTotp>();
+				const user = await env.jimbo77_community_db.prepare('SELECT totp_secret FROM users WHERE id = ?').bind(user_id).first<DBUserTotp>();
 				
 				if (!user || !user.totp_secret) return jsonResponse({ error: 'TOTP not setup' }, 400);
 
@@ -829,7 +829,7 @@ export default {
 				const delta = totp.validate({ token: token, window: 1 });
 
 				if (delta !== null) {
-					await env.cforum_db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').bind(user_id).run();
+					await env.jimbo77_community_db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').bind(user_id).run();
 					await security.logAudit(userPayload.id, 'ENABLE_TOTP', 'user', String(user_id), {}, request);
 					return jsonResponse({ success: true });
 				} else {
@@ -854,13 +854,13 @@ export default {
 				const { email } = body;
 				if (!email) return jsonResponse({ error: 'Missing email' }, 400);
 
-				const user = await env.cforum_db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+				const user = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
 				if (!user) return jsonResponse({ success: true }); // Silent fail
 
 				const token = generateToken();
 				const expires = Date.now() + 3600000; // 1 hour
 
-				await env.cforum_db.prepare('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?')
+				await env.jimbo77_community_db.prepare('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?')
 					.bind(token, expires, user.id).run();
 
 				const baseUrl = getBaseUrl();
@@ -898,7 +898,7 @@ export default {
 				if (new_password.length < 8 || new_password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
 
 				// Verify token
-				const user = await env.cforum_db.prepare('SELECT * FROM users WHERE reset_token = ?').bind(token).first<DBUser>();
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE reset_token = ?').bind(token).first<DBUser>();
 				if (!user) return jsonResponse({ error: 'Invalid token' }, 400);
 				if (!user.reset_token_expires || Date.now() > user.reset_token_expires) return jsonResponse({ error: 'Token expired' }, 400);
 
@@ -918,7 +918,7 @@ export default {
 				}
 
 				const passwordHash = await hashPassword(new_password);
-				await env.cforum_db.prepare('UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?')
+				await env.jimbo77_community_db.prepare('UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?')
 					.bind(passwordHash, user.id).run();
 
 				return jsonResponse({ success: true });
@@ -940,7 +940,7 @@ export default {
 				
 				const user_id = userPayload.id;
 
-const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
+const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
 				if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
 				// Verify 2FA if enabled
@@ -959,11 +959,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bin
 				}
 
 				// Check if email already exists
-				const exists = await env.cforum_db.prepare('SELECT id FROM users WHERE email = ?').bind(new_email).first();
+				const exists = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE email = ?').bind(new_email).first();
 				if (exists) return jsonResponse({ error: 'Email already in use' }, 400);
 
 				const token = generateToken();
-				await env.cforum_db.prepare('UPDATE users SET pending_email = ?, email_change_token = ? WHERE id = ?')
+				await env.jimbo77_community_db.prepare('UPDATE users SET pending_email = ?, email_change_token = ? WHERE id = ?')
 					.bind(new_email, token, user.id).run();
 				
 				await security.logAudit(userPayload.id, 'CHANGE_EMAIL_INIT', 'user', String(user_id), { new_email }, request);
@@ -989,10 +989,10 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bin
 			if (!token) return new Response('Missing token', { status: 400 });
 
 			try {
-const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change_token = ?').bind(token).first<DBUser>();
+const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE email_change_token = ?').bind(token).first<DBUser>();
 				if (!user) return new Response('Invalid token', { status: 400 });
 
-				await env.cforum_db.prepare('UPDATE users SET email = ?, pending_email = NULL, email_change_token = NULL WHERE id = ?')
+				await env.jimbo77_community_db.prepare('UPDATE users SET email = ?, pending_email = NULL, email_change_token = NULL WHERE id = ?')
 					.bind(user.pending_email, user.id).run();
 
 				return Response.redirect(`${getBaseUrl()}/?email_changed=true`, 302);
@@ -1015,28 +1015,28 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 
 				if (password) {
 					const hash = await hashPassword(password);
-					await env.cforum_db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hash, id).run();
+					await env.jimbo77_community_db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hash, id).run();
 				}
 				if (email) {
 					if (email.length > 50) return jsonResponse({ error: 'Email too long (Max 50 chars)' }, 400);
-					await env.cforum_db.prepare('UPDATE users SET email = ? WHERE id = ?').bind(email, id).run();
+					await env.jimbo77_community_db.prepare('UPDATE users SET email = ? WHERE id = ?').bind(email, id).run();
 				}
 				if (avatar_url !== undefined) {
 					// Allow clearing avatar with empty string or null -> Force Regenerate Default
 					if (!avatar_url) {
 						// Reset to Default
 						const identicon = await generateIdenticon(String(id));
-						await env.cforum_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, id).run();
+						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, id).run();
 					} else {
 						if (avatar_url.length > 500) return jsonResponse({ error: 'Avatar URL too long (Max 500 chars)' }, 400);
 						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Invalid Avatar URL' }, 400);
-						await env.cforum_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(avatar_url, id).run();
+						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(avatar_url, id).run();
 					}
 
 					// Notify Avatar Change
-					const notifyAvatar = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_avatar_change'").first<DBSetting>();
+					const notifyAvatar = await env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_avatar_change'").first<DBSetting>();
 					if (notifyAvatar && notifyAvatar.value === '1') {
-						const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
+						const user = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 						if (user) {
 							const emailHtml = `
 								<h1>Avatar został zaktualizowany</h1>
@@ -1052,12 +1052,12 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					if (hasInvisibleCharacters(username)) return jsonResponse({ error: 'Username contains invalid invisible characters' }, 400);
 					if (hasControlCharacters(username)) return jsonResponse({ error: 'Username contains invalid control characters' }, 400);
 					
-					await env.cforum_db.prepare('UPDATE users SET username = ? WHERE id = ?').bind(username, id).run();
+					await env.jimbo77_community_db.prepare('UPDATE users SET username = ? WHERE id = ?').bind(username, id).run();
 
 					// Notify user about username change
-					const notifyUsername = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_username_change'").first<DBSetting>();
+					const notifyUsername = await env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_username_change'").first<DBSetting>();
 					if (notifyUsername && notifyUsername.value === '1') {
-						const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
+						const user = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 						if (user) {
 							const emailHtml = `
 								<h1>Nazwa użytkownika została zmieniona</h1>
@@ -1080,7 +1080,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		// GET /api/categories
 		if (url.pathname === '/api/categories' && method === 'GET') {
 			try {
-				const { results } = await env.cforum_db.prepare('SELECT * FROM categories ORDER BY created_at ASC').all();
+				const { results } = await env.jimbo77_community_db.prepare('SELECT * FROM categories ORDER BY created_at ASC').all();
 				return jsonResponse(results);
 			} catch (e) {
 				return handleError(e);
@@ -1097,7 +1097,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const { name } = body;
 				if (!name) return jsonResponse({ error: 'Missing name' }, 400);
 				
-				const { success } = await env.cforum_db.prepare('INSERT INTO categories (name) VALUES (?)').bind(name).run();
+				const { success } = await env.jimbo77_community_db.prepare('INSERT INTO categories (name) VALUES (?)').bind(name).run();
 				await security.logAudit(userPayload.id, 'CREATE_CATEGORY', 'category', name, {}, request);
 				return jsonResponse({ success });
 			} catch (e) {
@@ -1116,7 +1116,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const { name } = body;
 				if (!name) return jsonResponse({ error: 'Missing name' }, 400);
 				
-				await env.cforum_db.prepare('UPDATE categories SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(name, id).run();
+				await env.jimbo77_community_db.prepare('UPDATE categories SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(name, id).run();
 				await security.logAudit(userPayload.id, 'UPDATE_CATEGORY', 'category', id, { name }, request);
 				return jsonResponse({ success: true });
 			} catch (e) {
@@ -1132,12 +1132,12 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
 				// Check if there are posts in this category
-				const count = await env.cforum_db.prepare('SELECT COUNT(*) as count FROM posts WHERE category_id = ?').bind(id).first<number>('count');
+				const count = await env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM posts WHERE category_id = ?').bind(id).first<number>('count');
 				if ((count ?? 0) > 0) {
 					return jsonResponse({ error: 'Cannot delete category with existing posts' }, 400);
 				}
 				
-				await env.cforum_db.prepare('DELETE FROM categories WHERE id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM categories WHERE id = ?').bind(id).run();
 				await security.logAudit(userPayload.id, 'DELETE_CATEGORY', 'category', id, {}, request);
 				return jsonResponse({ success: true });
 			} catch (e) {
@@ -1154,9 +1154,9 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
 				const [userCount, postCount, commentCount] = await Promise.all([
-					env.cforum_db.prepare('SELECT COUNT(*) as count FROM users').first<number>('count'),
-					env.cforum_db.prepare('SELECT COUNT(*) as count FROM posts').first<number>('count'),
-					env.cforum_db.prepare('SELECT COUNT(*) as count FROM comments').first<number>('count')
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM users').first<number>('count'),
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM posts').first<number>('count'),
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM comments').first<number>('count')
 				]);
 				
 				return jsonResponse({
@@ -1175,7 +1175,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
-				const { results } = await env.cforum_db.prepare('SELECT id, email, username, role, verified, created_at, avatar_url FROM users ORDER BY created_at DESC').all();
+				const { results } = await env.jimbo77_community_db.prepare('SELECT id, email, username, role, verified, created_at, avatar_url FROM users ORDER BY created_at DESC').all();
 				return jsonResponse(results);
 			} catch (e) {
 				return handleError(e);
@@ -1189,13 +1189,13 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
-				const { success } = await env.cforum_db.prepare('UPDATE users SET verified = 1, verification_token = NULL WHERE id = ?').bind(id).run();
+				const { success } = await env.jimbo77_community_db.prepare('UPDATE users SET verified = 1, verification_token = NULL WHERE id = ?').bind(id).run();
 				await security.logAudit(userPayload.id, 'MANUAL_VERIFY_USER', 'user', id, {}, request);
 
 				// Notification
-				const setting = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_manual_verify'").first<DBSetting>();
+				const setting = await env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_manual_verify'").first<DBSetting>();
 				if (setting && setting.value === '1') {
-					const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
+					const user = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 					if (!user) throw new Error('User unexpectedly missing');
 					const emailHtml = `
 						<h1>Konto zweryfikowane</h1>
@@ -1218,7 +1218,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
-				const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<DBUser>();
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<DBUser>();
 				if (!user) return jsonResponse({ error: 'User not found' }, 404);
 				if (user.verified) return jsonResponse({ error: 'User already verified' }, 400);
 
@@ -1226,7 +1226,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				let token = user.verification_token;
 				if (!token) {
 					token = generateToken();
-					await env.cforum_db.prepare('UPDATE users SET verification_token = ? WHERE id = ?').bind(token, id).run();
+					await env.jimbo77_community_db.prepare('UPDATE users SET verification_token = ? WHERE id = ?').bind(token, id).run();
 				}
 
 				const baseUrl = getBaseUrl();
@@ -1259,8 +1259,8 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
 				// 0. Delete user avatar and post images
-				const user = await env.cforum_db.prepare('SELECT avatar_url FROM users WHERE id = ?').bind(id).first<{avatar_url?: string}>();
-				const posts = await env.cforum_db.prepare('SELECT content FROM posts WHERE author_id = ?').bind(id).all();
+				const user = await env.jimbo77_community_db.prepare('SELECT avatar_url FROM users WHERE id = ?').bind(id).first<{avatar_url?: string}>();
+				const posts = await env.jimbo77_community_db.prepare('SELECT content FROM posts WHERE author_id = ?').bind(id).all();
 				
 				const deletionPromises: Promise<any>[] = [];
 				if (user && user.avatar_url) {
@@ -1277,25 +1277,25 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				}
 
 				// 1. Delete likes and comments ON the user's posts (to avoid orphans)
-				await env.cforum_db.prepare('DELETE FROM likes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)').bind(id).run();
 
 				// 2. Delete the user's own activity (likes and comments they made)
-				await env.cforum_db.prepare('DELETE FROM likes WHERE user_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE author_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE user_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE author_id = ?').bind(id).run();
 
 				// 3. Delete the user's posts
-				await env.cforum_db.prepare('DELETE FROM posts WHERE author_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM posts WHERE author_id = ?').bind(id).run();
 
 				// 4. Finally, delete the user
-				const userToDelete = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first();
-				await env.cforum_db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+				const userToDelete = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first();
+				await env.jimbo77_community_db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
 				
 				await security.logAudit(userPayload.id, 'ADMIN_DELETE_USER', 'user', String(id), {}, request);
 
 				// Notification
 				if (userToDelete) {
-					const setting = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_user_delete'").first();
+					const setting = await env.jimbo77_community_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_user_delete'").first();
 					if (setting && setting.value === '1') {
 						const emailHtml = `
 							<h1>Konto zostało usunięte</h1>
@@ -1320,7 +1320,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
 				// Delete images in post
-				const post = await env.cforum_db.prepare('SELECT content, author_id FROM posts WHERE id = ?').bind(id).first();
+				const post = await env.jimbo77_community_db.prepare('SELECT content, author_id FROM posts WHERE id = ?').bind(id).first();
 				if (post) {
 					const imageUrls = extractImageUrls(post.content as string);
 					if (imageUrls.length > 0) {
@@ -1328,9 +1328,9 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					}
 				}
 
-				await env.cforum_db.prepare('DELETE FROM likes WHERE post_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE post_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE post_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE post_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
 				
 				await security.logAudit(userPayload.id, 'ADMIN_DELETE_POST', 'post', String(id), {}, request);
 				return jsonResponse({ success: true });
@@ -1347,8 +1347,8 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
 
 				// Delete the comment AND its children (orphans prevention)
-				await env.cforum_db.prepare('DELETE FROM comments WHERE parent_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE parent_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
 				
 				await security.logAudit(userPayload.id, 'ADMIN_DELETE_COMMENT', 'comment', String(id), {}, request);
 				return jsonResponse({ success: true });
@@ -1366,7 +1366,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 
 				const body = await request.json() as any;
 				const { pinned } = body;
-				await env.cforum_db.prepare('UPDATE posts SET is_pinned = ? WHERE id = ?').bind(pinned ? 1 : 0, id).run();
+				await env.jimbo77_community_db.prepare('UPDATE posts SET is_pinned = ? WHERE id = ?').bind(pinned ? 1 : 0, id).run();
 				
 				await security.logAudit(userPayload.id, 'ADMIN_PIN_POST', 'post', id, { pinned }, request);
 				return jsonResponse({ success: true });
@@ -1387,11 +1387,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				
 				// Validate category exists if provided
 				if (category_id) {
-					const category = await env.cforum_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
+					const category = await env.jimbo77_community_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
 					if (!category) return jsonResponse({ error: 'Category not found' }, 404);
 				}
 
-				await env.cforum_db.prepare('UPDATE posts SET category_id = ? WHERE id = ?').bind(category_id || null, id).run();
+				await env.jimbo77_community_db.prepare('UPDATE posts SET category_id = ? WHERE id = ?').bind(category_id || null, id).run();
 				
 				await security.logAudit(userPayload.id, 'ADMIN_MOVE_POST', 'post', id, { category_id }, request);
 				return jsonResponse({ success: true });
@@ -1413,7 +1413,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const usedKeys = new Set<string>();
 
 				// Users avatars
-				const users = await env.cforum_db.prepare('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL').all();
+				const users = await env.jimbo77_community_db.prepare('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL').all();
 				for (const u of users.results) {
 					const uUrl = u.avatar_url as string;
 					const key = uUrl ? getKeyFromUrl(env as unknown as S3Env, uUrl) : null;
@@ -1421,7 +1421,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				}
 
 				// Posts images
-				const posts = await env.cforum_db.prepare('SELECT content FROM posts').all();
+				const posts = await env.jimbo77_community_db.prepare('SELECT content FROM posts').all();
 				for (const p of posts.results) {
 					const urls = extractImageUrls(p.content as string);
 					for (const uUrl of urls) {
@@ -1513,7 +1513,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (password.length < 8 || password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
 
 				// Check Uniqueness (Combined Query for Performance)
-				const existing = await env.cforum_db.prepare('SELECT email, username FROM users WHERE email = ? OR username = ?').bind(email, username).first();
+				const existing = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE email = ? OR username = ?').bind(email, username).first();
 				if (existing) {
 					if (existing.email === email) return jsonResponse({ error: 'Email already exists' }, 409);
 					return jsonResponse({ error: 'Username already taken' }, 409);
@@ -1545,7 +1545,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					}, 400);
 				}
 
-				const { success, meta } = await env.cforum_db.prepare(
+				const { success, meta } = await env.jimbo77_community_db.prepare(
 					'INSERT INTO users (email, username, password, role, verified, verification_token) VALUES (?, ?, ?, "user", 0, ?)'
 				).bind(email, username, passwordHash, verificationToken).run();
 
@@ -1555,12 +1555,12 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					const userId = meta?.last_row_id;
 					if (userId) {
 						const identicon = await generateIdenticon(String(userId));
-						await env.cforum_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, userId).run();
+						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, userId).run();
 					} else {
 						// Fallback if ID retrieval fails (rare in D1)
 						const identicon = await generateIdenticon(username);
 						// We don't have ID easily without query, but we can update by username or just skip
-						await env.cforum_db.prepare('UPDATE users SET avatar_url = ? WHERE username = ?').bind(identicon, username).run();
+						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE username = ?').bind(identicon, username).run();
 					}
 				}
 
@@ -1581,7 +1581,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 			}
 
 			try {
-				const { success } = await env.cforum_db.prepare(
+				const { success } = await env.jimbo77_community_db.prepare(
 					'UPDATE users SET verified = 1, verification_token = NULL WHERE verification_token = ?'
 				).bind(token).run();
 
@@ -1603,12 +1603,12 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				if (userPayload.role !== 'admin') {
 					// Zwykły user widzi tylko id, username, avatar
-					const { results } = await env.cforum_db.prepare(
+					const { results } = await env.jimbo77_community_db.prepare(
 						'SELECT id, username, avatar_url, created_at FROM users'
 					).all();
 					return jsonResponse(results);
 				}
-				const { results } = await env.cforum_db.prepare(
+				const { results } = await env.jimbo77_community_db.prepare(
 					'SELECT id, email, username, avatar_url, role, verified, created_at FROM users'
 				).all();
 				return jsonResponse(results);
@@ -1621,7 +1621,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		if (url.pathname === '/api/user/likes' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				const { results } = await env.cforum_db.prepare('SELECT post_id FROM likes WHERE user_id = ?').bind(userPayload.id).all();
+				const { results } = await env.jimbo77_community_db.prepare('SELECT post_id FROM likes WHERE user_id = ?').bind(userPayload.id).all();
 				return jsonResponse(results.map((r: any) => r.post_id));
 			} catch (e) {
 				return handleError(e);
@@ -1692,8 +1692,8 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
                 params.push(limit, offset);
 				
 				const [postsResult, countResult] = await Promise.all([
-                    env.cforum_db.prepare(query).bind(...params).all(),
-                    env.cforum_db.prepare(countQuery).bind(...countParams).first()
+                    env.jimbo77_community_db.prepare(query).bind(...params).all(),
+                    env.jimbo77_community_db.prepare(countQuery).bind(...countParams).first()
                 ]);
 
 				return jsonResponse({
@@ -1709,7 +1709,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		if (url.pathname.match(/^\/api\/posts\/\d+$/) && method === 'GET') {
 			const postId = url.pathname.split('/')[3];
 			try {
-				const post = await env.cforum_db.prepare(
+				const post = await env.jimbo77_community_db.prepare(
 					`SELECT 
                         posts.*, 
                         users.username as author_name, 
@@ -1727,14 +1727,14 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
 
 				try {
-					await env.cforum_db.prepare('UPDATE posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ?').bind(postId).run();
+					await env.jimbo77_community_db.prepare('UPDATE posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ?').bind(postId).run();
 					(post as any).view_count = Number((post as any).view_count || 0) + 1;
 				} catch {}
 				
 				// Check like status if user_id provided
 				const userId = url.searchParams.get('user_id');
 				if (userId) {
-					const like = await env.cforum_db.prepare('SELECT id FROM likes WHERE post_id = ? AND user_id = ?').bind(postId, userId).first();
+					const like = await env.jimbo77_community_db.prepare('SELECT id FROM likes WHERE post_id = ? AND user_id = ?').bind(postId, userId).first();
 					(post as any).liked = !!like;
 				}
 
@@ -1761,7 +1761,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				if (hasInvisibleCharacters(title) || hasInvisibleCharacters(content)) return jsonResponse({ error: 'Title or content contains invalid invisible characters' }, 400);
 
 				// Check ownership or admin
-				const post = await env.cforum_db.prepare('SELECT author_id FROM posts WHERE id = ?').bind(postId).first();
+				const post = await env.jimbo77_community_db.prepare('SELECT author_id FROM posts WHERE id = ?').bind(postId).first();
 				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
 
 				// Use userPayload for RBAC
@@ -1776,11 +1776,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 
 				// Validate Category
 				if (category_id) {
-					const category = await env.cforum_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
+					const category = await env.jimbo77_community_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
 					if (!category) return jsonResponse({ error: 'Category not found' }, 400);
 				}
 
-				await env.cforum_db.prepare(
+				await env.jimbo77_community_db.prepare(
 					'UPDATE posts SET title = ?, content = ?, category_id = ? WHERE id = ?'
 				).bind(title.trim(), content.trim(), category_id || null, postId).run();
 				
@@ -1799,7 +1799,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				
 				// Check ownership
-				const post = await env.cforum_db.prepare('SELECT author_id, content FROM posts WHERE id = ?').bind(id).first();
+				const post = await env.jimbo77_community_db.prepare('SELECT author_id, content FROM posts WHERE id = ?').bind(id).first();
 				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
 				
 				if (post.author_id !== userPayload.id) {
@@ -1812,9 +1812,9 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					ctx.waitUntil(Promise.all(imageUrls.map(url => deleteImage(env as unknown as S3Env, url, userPayload.id))).catch(err => console.error('Failed to delete post images', err)));
 				}
 
-				await env.cforum_db.prepare('DELETE FROM likes WHERE post_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE post_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE post_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE post_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
 				
 				await security.logAudit(userPayload.id, 'DELETE_POST', 'post', id, {}, request);
 				return jsonResponse({ success: true });
@@ -1827,7 +1827,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		if (url.pathname.match(/^\/api\/posts\/\d+\/comments$/) && method === 'GET') {
 			const postId = url.pathname.split('/')[3];
 			try {
-				const { results } = await env.cforum_db.prepare(
+				const { results } = await env.jimbo77_community_db.prepare(
 					`SELECT comments.*, users.username, users.avatar_url, users.role 
                      FROM comments 
                      JOIN users ON comments.author_id = users.id 
@@ -1847,7 +1847,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userPayload = await authenticate(request);
 				
 				// Fetch comment to check ownership
-				const comment = await env.cforum_db.prepare('SELECT author_id FROM comments WHERE id = ?').bind(id).first();
+				const comment = await env.jimbo77_community_db.prepare('SELECT author_id FROM comments WHERE id = ?').bind(id).first();
 				
 				if (!comment) return jsonResponse({ error: 'Comment not found' }, 404);
 
@@ -1857,8 +1857,8 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				}
 
 				// Delete the comment AND its children (orphans prevention)
-				await env.cforum_db.prepare('DELETE FROM comments WHERE parent_id = ?').bind(id).run();
-				await env.cforum_db.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE parent_id = ?').bind(id).run();
+				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
 				
 				await security.logAudit(userPayload.id, 'DELETE_COMMENT', 'comment', String(id), {}, request);
 				return jsonResponse({ success: true });
@@ -1875,15 +1875,15 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const userId = userPayload.id;
 
 				// Toggle like
-				const existing = await env.cforum_db.prepare(
+				const existing = await env.jimbo77_community_db.prepare(
 					'SELECT id FROM likes WHERE post_id = ? AND user_id = ?'
 				).bind(postId, userId).first();
 
 				if (existing) {
-					await env.cforum_db.prepare('DELETE FROM likes WHERE id = ?').bind(existing.id).run();
+					await env.jimbo77_community_db.prepare('DELETE FROM likes WHERE id = ?').bind(existing.id).run();
 					return jsonResponse({ liked: false });
 				} else {
-					await env.cforum_db.prepare('INSERT INTO likes (post_id, user_id) VALUES (?, ?)').bind(postId, userId).run();
+					await env.jimbo77_community_db.prepare('INSERT INTO likes (post_id, user_id) VALUES (?, ?)').bind(postId, userId).run();
 					return jsonResponse({ liked: true });
 				}
 			} catch (e) {
@@ -1897,7 +1897,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 			
 			try {
 				const userPayload = await authenticate(request);
-				const existing = await env.cforum_db.prepare(
+				const existing = await env.jimbo77_community_db.prepare(
 					'SELECT id FROM likes WHERE post_id = ? AND user_id = ?'
 				).bind(postId, userPayload.id).first();
 				return jsonResponse({ liked: !!existing });
@@ -1954,11 +1954,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 
 				// Validate Category
 				if (category_id) {
-					const category = await env.cforum_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
+					const category = await env.jimbo77_community_db.prepare('SELECT id FROM categories WHERE id = ?').bind(category_id).first();
 					if (!category) return jsonResponse({ error: 'Category not found' }, 400);
 				}
 
-				const { success } = await env.cforum_db.prepare(
+				const { success } = await env.jimbo77_community_db.prepare(
 					'INSERT INTO posts (author_id, title, content, category_id) VALUES (?, ?, ?, ?)'
 				).bind(userPayload.id, safeTitle.trim(), content.trim(), category_id || null).run();
 				

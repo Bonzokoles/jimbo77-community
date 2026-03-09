@@ -47,7 +47,7 @@ export class Security {
             if (typeof email !== 'string' || !email) return null;
             if (typeof jti !== 'string' || !jti) return null;
 
-            const session = await this.env.cforum_db
+            const session = await this.env.jimbo77_community_db
                 .prepare('SELECT user_id, expires_at FROM sessions WHERE jti = ?')
                 .bind(jti)
                 .first();
@@ -56,7 +56,7 @@ export class Security {
             if (Number(session.expires_at) <= Math.floor(Date.now() / 1000)) return null;
 
             if (Math.random() < 0.01) {
-                await this.env.cforum_db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Math.floor(Date.now() / 1000)).run();
+                await this.env.jimbo77_community_db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Math.floor(Date.now() / 1000)).run();
             }
 
             return { id, role, email };
@@ -83,15 +83,15 @@ export class Security {
             return { valid: false, error: 'Request expired' };
         }
 
-        const existing = await this.env.cforum_db.prepare('SELECT nonce FROM nonces WHERE nonce = ?').bind(nonce).first();
+        const existing = await this.env.jimbo77_community_db.prepare('SELECT nonce FROM nonces WHERE nonce = ?').bind(nonce).first();
         if (existing) {
             return { valid: false, error: 'Replay detected' };
         }
 
-        await this.env.cforum_db.prepare('INSERT INTO nonces (nonce, expires_at) VALUES (?, ?)').bind(nonce, ts + NONCE_TTL).run();
+        await this.env.jimbo77_community_db.prepare('INSERT INTO nonces (nonce, expires_at) VALUES (?, ?)').bind(nonce, ts + NONCE_TTL).run();
         
         if (Math.random() < 0.01) {
-             await this.env.cforum_db.prepare('DELETE FROM nonces WHERE expires_at < ?').bind(now).run();
+             await this.env.jimbo77_community_db.prepare('DELETE FROM nonces WHERE expires_at < ?').bind(now).run();
         }
 
         return { valid: true };
@@ -99,7 +99,7 @@ export class Security {
 
     async logAudit(userId: number | null, action: string, resourceType: string, resourceId: string, details: any, request: Request) {
         const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-        await this.env.cforum_db.prepare(
+        await this.env.jimbo77_community_db.prepare(
             'INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)'
         ).bind(userId, action, resourceType, resourceId, JSON.stringify(details), ip).run();
     }
