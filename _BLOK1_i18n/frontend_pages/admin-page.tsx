@@ -47,7 +47,7 @@ export function AdminPage() {
 	}, [token]);
 
 	React.useEffect(() => {
-		if (token && !isAdmin) setError('Brak uprawnień do panelu administracyjnego');
+		if (token && !isAdmin) setError('无权限访问管理后台');
 	}, [token, isAdmin]);
 
 	const refresh = React.useCallback(async () => {
@@ -78,7 +78,9 @@ export function AdminPage() {
 		}
 	}, [isAdmin]);
 
-	React.useEffect(() => { refresh(); }, [refresh]);
+	React.useEffect(() => {
+		refresh();
+	}, [refresh]);
 
 	async function saveSettings() {
 		if (!isAdmin) return;
@@ -90,7 +92,7 @@ export function AdminPage() {
 				headers: getSecurityHeaders('POST'),
 				body: JSON.stringify(systemSettings)
 			});
-			alert('Ustawienia zostały zapisane');
+			alert('设置已保存');
 		} catch (e: any) {
 			setError(String(e?.message || e));
 		} finally {
@@ -140,7 +142,7 @@ export function AdminPage() {
 	}
 
 	async function deleteCategory(id: number) {
-		if (!confirm('Czy na pewno chcesz usunąć tę kategorię?')) return;
+		if (!confirm('确定删除此分类？')) return;
 		setLoading(true);
 		setError('');
 		try {
@@ -187,7 +189,7 @@ export function AdminPage() {
 	}
 
 	async function deleteUser(id: number) {
-		if (!confirm('Czy na pewno chcesz usunąć tego użytkownika?')) return;
+		if (!confirm('确定删除此用户？')) return;
 		setLoading(true);
 		setError('');
 		try {
@@ -201,7 +203,7 @@ export function AdminPage() {
 	}
 
 	async function manualVerify(id: number) {
-		if (!confirm('Czy na pewno chcesz ręcznie zweryfikować tego użytkownika?')) return;
+		if (!confirm('确认手动验证此用户？')) return;
 		setLoading(true);
 		setError('');
 		try {
@@ -215,12 +217,12 @@ export function AdminPage() {
 	}
 
 	async function resendEmail(id: number) {
-		if (!confirm('Czy chcesz ponownie wysłać e-mail weryfikacyjny?')) return;
+		if (!confirm('重新发送验证邮件？')) return;
 		setLoading(true);
 		setError('');
 		try {
 			await apiFetch(`/admin/users/${id}/resend`, { method: 'POST', headers: getSecurityHeaders('POST'), body: JSON.stringify({}) });
-			alert('E-mail wysłany');
+			alert('已发送');
 		} catch (e: any) {
 			setError(String(e?.message || e));
 		} finally {
@@ -233,43 +235,47 @@ export function AdminPage() {
 			<div className="space-y-6">
 				<div className="flex items-center justify-between">
 					<div>
-						<h1 className="text-2xl font-semibold tracking-tight">Panel administracyjny</h1>
-						<p className="text-sm text-muted-foreground">Ustawienia strony, kategorie i zarządzanie użytkownikami</p>
+						<h1 className="text-2xl font-semibold tracking-tight">管理后台</h1>
+						<p className="text-sm text-muted-foreground">站点设置、分类与用户管理</p>
 					</div>
 					<Button variant="outline" onClick={refresh} disabled={loading}>
 						<RefreshCw className="h-4 w-4" />
-						<span className="sr-only">Odśwież</span>
+						<span className="sr-only">刷新</span>
 					</Button>
 				</div>
 
 				{user?.role !== 'admin' ? (
 					<Card>
-						<CardContent className="py-6 text-sm text-muted-foreground">Brak uprawnień dostępu</CardContent>
+						<CardContent className="py-6 text-sm text-muted-foreground">无权限访问</CardContent>
 					</Card>
 				) : (
 					<>
 						{error ? <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">{error}</div> : null}
 
 						<Card>
-							<CardHeader><CardTitle>Statystyki</CardTitle></CardHeader>
+							<CardHeader>
+								<CardTitle>统计</CardTitle>
+							</CardHeader>
 							<CardContent className="grid gap-4 sm:grid-cols-3">
 								<div className="rounded-md border p-4">
-									<div className="text-sm text-muted-foreground">Użytkownicy</div>
+									<div className="text-sm text-muted-foreground">用户</div>
 									<div className="text-2xl font-semibold">{stats?.users ?? '-'}</div>
 								</div>
 								<div className="rounded-md border p-4">
-									<div className="text-sm text-muted-foreground">Posty</div>
+									<div className="text-sm text-muted-foreground">帖子</div>
 									<div className="text-2xl font-semibold">{stats?.posts ?? '-'}</div>
 								</div>
 								<div className="rounded-md border p-4">
-									<div className="text-sm text-muted-foreground">Komentarze</div>
+									<div className="text-sm text-muted-foreground">评论</div>
 									<div className="text-2xl font-semibold">{stats?.comments ?? '-'}</div>
 								</div>
 							</CardContent>
 						</Card>
 
 						<Card>
-							<CardHeader><CardTitle>Ustawienia strony</CardTitle></CardHeader>
+							<CardHeader>
+								<CardTitle>站点设置</CardTitle>
+							</CardHeader>
 							<CardContent className="space-y-4">
 								<label className="flex items-center gap-2 text-sm">
 									<input
@@ -278,7 +284,7 @@ export function AdminPage() {
 										checked={systemSettings.turnstile_enabled}
 										onChange={(e) => setSystemSettings((s) => ({ ...s, turnstile_enabled: e.target.checked }))}
 									/>
-									Włącz Cloudflare Turnstile (CAPTCHA)
+									启用 Cloudflare Turnstile
 								</label>
 								<Separator />
 								<div className="grid gap-3 sm:grid-cols-2">
@@ -289,7 +295,7 @@ export function AdminPage() {
 											checked={systemSettings.notify_on_user_delete}
 											onChange={(e) => setSystemSettings((s) => ({ ...s, notify_on_user_delete: e.target.checked }))}
 										/>
-										Powiadamiaj użytkownika o usunięciu konta
+										删除账号时通知用户
 									</label>
 									<label className="flex items-center gap-2 text-sm">
 										<input
@@ -298,7 +304,7 @@ export function AdminPage() {
 											checked={systemSettings.notify_on_username_change}
 											onChange={(e) => setSystemSettings((s) => ({ ...s, notify_on_username_change: e.target.checked }))}
 										/>
-										Powiadamiaj o zmianie nazwy użytkownika
+										修改用户名时通知用户
 									</label>
 									<label className="flex items-center gap-2 text-sm">
 										<input
@@ -307,7 +313,7 @@ export function AdminPage() {
 											checked={systemSettings.notify_on_avatar_change}
 											onChange={(e) => setSystemSettings((s) => ({ ...s, notify_on_avatar_change: e.target.checked }))}
 										/>
-										Powiadamiaj o zmianie awatara
+										修改头像时通知用户
 									</label>
 									<label className="flex items-center gap-2 text-sm">
 										<input
@@ -316,24 +322,28 @@ export function AdminPage() {
 											checked={systemSettings.notify_on_manual_verify}
 											onChange={(e) => setSystemSettings((s) => ({ ...s, notify_on_manual_verify: e.target.checked }))}
 										/>
-										Powiadamiaj o ręcznej weryfikacji konta
+										手动验证通过时通知用户
 									</label>
 								</div>
 								<Button onClick={saveSettings} disabled={loading}>
-									{loading ? 'Zapisywanie...' : 'Zapisz ustawienia'}
+									{loading ? '保存中...' : '保存设置'}
 								</Button>
 							</CardContent>
 						</Card>
 
 						<Card>
-							<CardHeader><CardTitle>Zarządzanie kategoriami</CardTitle></CardHeader>
+							<CardHeader>
+								<CardTitle>分类管理</CardTitle>
+							</CardHeader>
 							<CardContent className="space-y-4">
 								<div className="flex flex-wrap items-end gap-2">
 									<div className="space-y-2">
-										<Label htmlFor="cat-name">Nazwa kategorii</Label>
+										<Label htmlFor="cat-name">分类名称</Label>
 										<Input id="cat-name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
 									</div>
-									<Button onClick={createCategory} disabled={loading}>Dodaj</Button>
+									<Button onClick={createCategory} disabled={loading}>
+										添加
+									</Button>
 								</div>
 								<div className="space-y-2">
 									{categories.map((c) => (
@@ -350,47 +360,59 @@ export function AdminPage() {
 											<div className="flex items-center gap-2">
 												{editingCategoryId === c.id ? (
 													<>
-														<Button variant="outline" size="sm" disabled={loading} onClick={() => updateCategory(c.id)}>Zapisz</Button>
+														<Button variant="outline" size="sm" disabled={loading} onClick={() => updateCategory(c.id)}>
+															保存
+														</Button>
 														<Button
 															variant="outline"
 															size="sm"
 															disabled={loading}
-															onClick={() => { setEditingCategoryId(null); setEditingCategoryName(''); }}
+															onClick={() => {
+																setEditingCategoryId(null);
+																setEditingCategoryName('');
+															}}
 														>
-															Anuluj
+															取消
 														</Button>
 													</>
 												) : (
 													<Button
 														variant="outline"
 														size="sm"
-														onClick={() => { setEditingCategoryId(c.id); setEditingCategoryName(c.name); }}
+														onClick={() => {
+															setEditingCategoryId(c.id);
+															setEditingCategoryName(c.name);
+														}}
 													>
-														Edytuj
+														编辑
 													</Button>
 												)}
-												<Button variant="destructive" size="sm" onClick={() => deleteCategory(c.id)}>Usuń</Button>
+												<Button variant="destructive" size="sm" onClick={() => deleteCategory(c.id)}>
+													删除
+												</Button>
 											</div>
 										</div>
 									))}
-									{categories.length === 0 ? <div className="text-sm text-muted-foreground">Brak kategorii</div> : null}
+									{categories.length === 0 ? <div className="text-sm text-muted-foreground">暂无分类</div> : null}
 								</div>
 							</CardContent>
 						</Card>
 
 						<Card>
-							<CardHeader><CardTitle>Zarządzanie użytkownikami</CardTitle></CardHeader>
+							<CardHeader>
+								<CardTitle>用户管理</CardTitle>
+							</CardHeader>
 							<CardContent className="space-y-3">
 								<div className="overflow-x-auto rounded-md border">
 									<table className="w-full text-sm">
 										<thead className="bg-muted/30 text-left">
 											<tr>
 												<th className="px-3 py-2">ID</th>
-												<th className="px-3 py-2">Nazwa użytkownika</th>
-												<th className="px-3 py-2">E-mail</th>
-												<th className="px-3 py-2">Rola</th>
-												<th className="px-3 py-2">Zweryfikowany</th>
-												<th className="px-3 py-2">Akcje</th>
+												<th className="px-3 py-2">用户名</th>
+												<th className="px-3 py-2">邮箱</th>
+												<th className="px-3 py-2">角色</th>
+												<th className="px-3 py-2">已验证</th>
+												<th className="px-3 py-2">操作</th>
 											</tr>
 										</thead>
 										<tbody>
@@ -400,7 +422,13 @@ export function AdminPage() {
 													<td className="px-3 py-2">
 														<span className="inline-flex items-center gap-2">
 															{u.avatar_url ? (
-																<img src={u.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+																<img
+																	src={u.avatar_url}
+																	alt=""
+																	className="h-6 w-6 rounded-full object-cover"
+																	loading="lazy"
+																	referrerPolicy="no-referrer"
+																/>
 															) : (
 																<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
 																	<UserIcon className="h-4 w-4" />
@@ -410,14 +438,14 @@ export function AdminPage() {
 															{u.role === 'admin' ? (
 																<span className="inline-flex items-center gap-1 rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
 																	<Shield className="h-3 w-3" />
-																	<span className="sr-only">Administrator</span>
+																	<span className="sr-only">管理员</span>
 																</span>
 															) : null}
 														</span>
 													</td>
 													<td className="px-3 py-2">{u.email}</td>
 													<td className="px-3 py-2">{u.role}</td>
-													<td className="px-3 py-2">{u.verified ? 'Tak' : 'Nie'}</td>
+													<td className="px-3 py-2">{u.verified ? '是' : '否'}</td>
 													<td className="px-3 py-2">
 														<div className="flex flex-wrap gap-2">
 															<Button
@@ -426,7 +454,7 @@ export function AdminPage() {
 																className="border-sky-500 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:text-sky-400 dark:hover:bg-sky-950/40"
 																onClick={() => openEdit(u)}
 															>
-																Edytuj
+																编辑
 															</Button>
 															{!u.verified ? (
 																<>
@@ -436,7 +464,7 @@ export function AdminPage() {
 																		className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
 																		onClick={() => manualVerify(u.id)}
 																	>
-																		Weryfikuj
+																		验证
 																	</Button>
 																	<Button
 																		variant="outline"
@@ -444,12 +472,14 @@ export function AdminPage() {
 																		className="border-amber-500 text-amber-800 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-400 dark:hover:bg-amber-950/40"
 																		onClick={() => resendEmail(u.id)}
 																	>
-																		Wyślij ponownie
+																		重发
 																	</Button>
 																</>
 															) : null}
 															{user?.id !== u.id ? (
-																<Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>Usuń</Button>
+																<Button variant="destructive" size="sm" onClick={() => deleteUser(u.id)}>
+																	删除
+																</Button>
 															) : null}
 														</div>
 													</td>
@@ -464,30 +494,34 @@ export function AdminPage() {
 						<Dialog open={editOpen} onOpenChange={setEditOpen}>
 							<DialogContent>
 								<DialogHeader>
-									<DialogTitle>Edytuj użytkownika</DialogTitle>
-									<DialogDescription>Zmień nazwę użytkownika, e-mail, awatar lub hasło</DialogDescription>
+									<DialogTitle>编辑用户</DialogTitle>
+									<DialogDescription>修改用户名/邮箱/头像/密码</DialogDescription>
 								</DialogHeader>
 								<div className="grid gap-4 py-4">
 									<div className="grid gap-2">
-										<Label htmlFor="edit-username">Nazwa użytkownika</Label>
+										<Label htmlFor="edit-username">用户名</Label>
 										<Input id="edit-username" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} maxLength={20} />
 									</div>
 									<div className="grid gap-2">
-										<Label htmlFor="edit-email">E-mail</Label>
+										<Label htmlFor="edit-email">邮箱</Label>
 										<Input id="edit-email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" />
 									</div>
 									<div className="grid gap-2">
-										<Label htmlFor="edit-avatar">URL awatara</Label>
+										<Label htmlFor="edit-avatar">头像 URL</Label>
 										<Input id="edit-avatar" value={editAvatarUrl} onChange={(e) => setEditAvatarUrl(e.target.value)} />
 									</div>
 									<div className="grid gap-2">
-										<Label htmlFor="edit-password">Nowe hasło (zostaw puste, aby nie zmieniać)</Label>
-										<Input id="edit-password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" />
+										<Label htmlFor="edit-password">新密码 (留空不变)</Label>
+										<Input id="edit-password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
 									</div>
 								</div>
 								<DialogFooter>
-									<Button variant="outline" onClick={() => setEditOpen(false)}>Anuluj</Button>
-									<Button onClick={saveEdit} disabled={loading}>{loading ? 'Zapisywanie...' : 'Zapisz'}</Button>
+									<Button variant="outline" onClick={() => setEditOpen(false)}>
+										取消
+									</Button>
+									<Button onClick={saveEdit} disabled={loading}>
+										{loading ? '保存中...' : '保存'}
+									</Button>
 								</DialogFooter>
 							</DialogContent>
 						</Dialog>

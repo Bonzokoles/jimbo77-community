@@ -59,7 +59,6 @@ export function PostPage() {
 			setEditContent(editContent + insertText);
 		}
 	}
-
 	const contentRef = React.useRef<HTMLDivElement | null>(null);
 	const [editPreviewOpen, setEditPreviewOpen] = React.useState(true);
 	const editPreviewRef = React.useRef<HTMLDivElement | null>(null);
@@ -78,11 +77,12 @@ export function PostPage() {
 	}
 
 	const postId = getPostIdFromPath();
+
 	const userId = user?.id ?? null;
 
 	const refresh = React.useCallback(async () => {
 		if (!postId) {
-			setError('Post nie istnieje');
+			setError('帖子不存在');
 			setLoading(false);
 			return;
 		}
@@ -103,7 +103,9 @@ export function PostPage() {
 		}
 	}, [postId, userId]);
 
-	React.useEffect(() => { refresh(); }, [refresh]);
+	React.useEffect(() => {
+		refresh();
+	}, [refresh]);
 
 	React.useEffect(() => {
 		void apiFetch<Category[]>('/categories')
@@ -159,7 +161,10 @@ export function PostPage() {
 
 	async function toggleLike() {
 		if (!post) return;
-		if (!user) { window.location.href = '/login'; return; }
+		if (!user) {
+			window.location.href = '/login';
+			return;
+		}
 		try {
 			const data = await apiFetch<{ liked: boolean }>(`/posts/${post.id}/like`, {
 				method: 'POST',
@@ -167,20 +172,31 @@ export function PostPage() {
 				body: JSON.stringify({})
 			});
 			setPost((prev) =>
-				prev ? { ...prev, liked: data.liked, like_count: (prev.like_count || 0) + (data.liked ? 1 : -1) } : prev
+				prev
+					? {
+							...prev,
+							liked: data.liked,
+							like_count: (prev.like_count || 0) + (data.liked ? 1 : -1)
+						}
+					: prev
 			);
-		} catch { return; }
+		} catch {
+			return;
+		}
 	}
 
 	async function submitComment(e: React.FormEvent) {
 		e.preventDefault();
 		if (!postId) return;
-		if (!user) { window.location.href = '/login'; return; }
+		if (!user) {
+			window.location.href = '/login';
+			return;
+		}
 		setCommentError('');
-		const err = validateText(newComment, 'komentarz');
+		const err = validateText(newComment, '评论');
 		if (err) return setCommentError(err);
-		if (newComment.length > 3000) return setCommentError('Komentarz jest zbyt długi (maksymalnie 3000 znaków)');
-		if (turnstileActive && !turnstileToken) return setCommentError('Proszę wypełnić weryfikację CAPTCHA');
+		if (newComment.length > 3000) return setCommentError('评论过长 (最多 3000 字符)');
+		if (turnstileActive && !turnstileToken) return setCommentError('请完成验证码验证');
 
 		setCommentLoading(true);
 		try {
@@ -208,9 +224,12 @@ export function PostPage() {
 	}
 
 	async function deleteComment(id: number) {
-		if (!confirm('Czy na pewno chcesz usunąć ten komentarz? Tej operacji nie można cofnąć.')) return;
+		if (!confirm('确定要删除此评论吗？此操作无法撤销。')) return;
 		try {
-			await apiFetch(`/comments/${id}`, { method: 'DELETE', headers: getSecurityHeaders('DELETE') });
+			await apiFetch(`/comments/${id}`, {
+				method: 'DELETE',
+				headers: getSecurityHeaders('DELETE')
+			});
 			await refresh();
 		} catch (e: any) {
 			alert(String(e?.message || e));
@@ -219,11 +238,14 @@ export function PostPage() {
 
 	async function deletePost() {
 		if (!post) return;
-		if (!confirm('Czy na pewno chcesz usunąć ten post? Tej operacji nie można cofnąć.')) return;
+		if (!confirm('确定要删除这个帖子吗？此操作无法撤销。')) return;
 		try {
 			const isAdmin = user?.role === 'admin';
 			const path = isAdmin ? `/admin/posts/${post.id}` : `/posts/${post.id}`;
-			await apiFetch(path, { method: 'DELETE', headers: getSecurityHeaders('DELETE') });
+			await apiFetch(path, {
+				method: 'DELETE',
+				headers: getSecurityHeaders('DELETE')
+			});
 			window.location.href = '/';
 		} catch (e: any) {
 			alert(String(e?.message || e));
@@ -241,8 +263,11 @@ export function PostPage() {
 				body: JSON.stringify({ pinned: next })
 			});
 			setPost((prev) => (prev ? { ...prev, is_pinned: next ? 1 : 0 } : prev));
-		} catch { return; }
-		finally { setAdminMenuOpen(false); }
+		} catch {
+			return;
+		} finally {
+			setAdminMenuOpen(false);
+		}
 	}
 
 	async function adminMovePostCategory(categoryId: number | null) {
@@ -256,18 +281,20 @@ export function PostPage() {
 			});
 			setAdminMenuOpen(false);
 			await refresh();
-		} catch { return; }
+		} catch {
+			return;
+		}
 	}
 
 	async function saveEdit() {
 		if (!post) return;
 		setEditError('');
-		const titleErr = validateText(editTitle, 'tytuł');
+		const titleErr = validateText(editTitle, '标题');
 		if (titleErr) return setEditError(titleErr);
-		const contentErr = validateText(editContent, 'treść');
+		const contentErr = validateText(editContent, '内容');
 		if (contentErr) return setEditError(contentErr);
-		if (editTitle.length > 30) return setEditError('Tytuł jest zbyt długi (maksymalnie 30 znaków)');
-		if (editContent.length > 3000) return setEditError('Treść jest zbyt długa (maksymalnie 3000 znaków)');
+		if (editTitle.length > 30) return setEditError('标题过长 (最多 30 字符)');
+		if (editContent.length > 3000) return setEditError('内容过长 (最多 3000 字符)');
 
 		setEditLoading(true);
 		try {
@@ -292,7 +319,7 @@ export function PostPage() {
 					<Button asChild variant="ghost" size="sm">
 						<a href="/">
 							<ArrowLeft className="h-4 w-4" />
-							<span className="sr-only">Wróć do strony głównej</span>
+							<span className="sr-only">返回首页</span>
 						</a>
 					</Button>
 				</div>
@@ -301,11 +328,11 @@ export function PostPage() {
 
 				{loading ? (
 					<Card>
-						<CardContent className="py-6 text-sm text-muted-foreground">Ładowanie...</CardContent>
+						<CardContent className="py-6 text-sm text-muted-foreground">加载中...</CardContent>
 					</Card>
 				) : !post ? (
 					<Card>
-						<CardContent className="py-6 text-sm text-muted-foreground">Post nie istnieje</CardContent>
+						<CardContent className="py-6 text-sm text-muted-foreground">帖子不存在</CardContent>
 					</Card>
 				) : (
 					<>
@@ -316,7 +343,13 @@ export function PostPage() {
 									<span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-normal text-muted-foreground">
 										<span className="inline-flex items-center gap-2">
 											{post.author_avatar ? (
-												<img src={post.author_avatar} alt="" className="h-6 w-6 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+												<img
+													src={post.author_avatar}
+													alt=""
+													className="h-6 w-6 rounded-full object-cover"
+													loading="lazy"
+													referrerPolicy="no-referrer"
+												/>
 											) : (
 												<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
 													<User className="h-4 w-4" />
@@ -326,7 +359,7 @@ export function PostPage() {
 											{post.author_role === 'admin' ? (
 												<span className="inline-flex items-center gap-1 rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
 													<Shield className="h-3 w-3" />
-													<span className="sr-only">Administrator</span>
+													<span className="sr-only">管理员</span>
 												</span>
 											) : null}
 										</span>
@@ -340,19 +373,21 @@ export function PostPage() {
 									<Button variant={post.liked ? 'secondary' : 'outline'} size="sm" onClick={toggleLike} disabled={!user}>
 										<Heart className="h-4 w-4 text-rose-600" fill={post.liked ? 'currentColor' : 'none'} />
 										<span className="tabular-nums">{post.like_count || 0}</span>
-										<span className="sr-only">{post.liked ? 'Cofnij polubienie' : 'Polub'}</span>
+										<span className="sr-only">{post.liked ? '取消点赞' : '点赞'}</span>
 									</Button>
 									<span className="inline-flex items-center gap-1 rounded-md border bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
 										<Eye className="h-4 w-4 text-emerald-600" />
 										<span className="tabular-nums">{post.view_count || 0}</span>
-										<span className="sr-only">Wyświetlenia</span>
+										<span className="sr-only">观看数</span>
 									</span>
 
 									{user && (user.role === 'admin' || user.id === post.author_id) ? (
-										<Button variant="outline" size="sm" onClick={() => setIsEditing((v) => !v)}>
-											{isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-											<span className="sr-only">{isEditing ? 'Anuluj edycję' : 'Edytuj'}</span>
-										</Button>
+										<>
+											<Button variant="outline" size="sm" onClick={() => setIsEditing((v) => !v)}>
+												{isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+												<span className="sr-only">{isEditing ? '取消编辑' : '编辑'}</span>
+											</Button>
+										</>
 									) : null}
 
 									{user && (user.role === 'admin' || user.id === post.author_id) ? (
@@ -366,7 +401,7 @@ export function PostPage() {
 												aria-expanded={adminMenuOpen}
 											>
 												<MoreVertical className="h-4 w-4" />
-												<span className="sr-only">Więcej</span>
+												<span className="sr-only">更多</span>
 											</Button>
 											{adminMenuOpen ? (
 												<div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-md border bg-background p-1 shadow-md">
@@ -377,27 +412,30 @@ export function PostPage() {
 															onClick={togglePin}
 														>
 															<Pin className="h-4 w-4" />
-															{post.is_pinned ? 'Odepnij' : 'Przypnij'}
+															{post.is_pinned ? '取消置顶' : '置顶'}
 														</button>
 													) : null}
 													<button
 														type="button"
 														className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
-														onClick={() => { setAdminMenuOpen(false); void deletePost(); }}
+														onClick={() => {
+															setAdminMenuOpen(false);
+															void deletePost();
+														}}
 													>
 														<Trash2 className="h-4 w-4" />
-														Usuń
+														删除
 													</button>
 													{user.role === 'admin' ? (
 														<>
 															<div className="my-1 h-px bg-border" />
-															<div className="px-2 py-1 text-xs font-medium text-muted-foreground">Przenieś do kategorii</div>
+															<div className="px-2 py-1 text-xs font-medium text-muted-foreground">移动到分类</div>
 															<button
 																type="button"
 																className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
 																onClick={() => void adminMovePostCategory(null)}
 															>
-																Bez kategorii
+																未分类
 															</button>
 															{allCategories.map((c) => (
 																<button
@@ -427,49 +465,58 @@ export function PostPage() {
 											<div className="flex items-center justify-end">
 												<Button type="button" variant="outline" size="sm" onClick={() => setEditPreviewOpen((v) => !v)}>
 													{editPreviewOpen ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-													<span className="sr-only">{editPreviewOpen ? 'Ukryj podgląd' : 'Pokaż podgląd'}</span>
+													<span className="sr-only">{editPreviewOpen ? '关闭预览' : '打开预览'}</span>
 												</Button>
 											</div>
 											<Textarea ref={editContentRef} value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={10} />
 										</div>
-										<div className="space-y-2">
-											<label className="block text-sm font-medium text-muted-foreground">Prześlij zdjęcie</label>
-											<input
-												type="file"
-												accept="image/*"
-												className="block w-full text-sm"
-												onChange={async (e) => {
-													const file = e.target.files && e.target.files[0];
-													if (!file) return;
-													setEditError('');
-													if (file.size > 2 * 1024 * 1024) { setEditError('Plik jest zbyt duży (maksymalnie 2MB)'); return; }
-													setUploadLoading(true);
-													try {
-														const formData = new FormData();
-														formData.append('file', file);
-														formData.append('type', 'post');
-														const res = await fetch('/api/upload', {
-															method: 'POST',
-															headers: getSecurityHeaders('POST', null),
-															body: formData
-														});
-														const data = await res.json();
-														if (!res.ok) throw new Error(data?.error || 'Błąd przesyłania');
-														insertIntoEditContent(`\n\n![](${data.url})\n\n`);
-														setEditPreviewOpen(true);
-													} catch (err: any) {
-														setEditError(String(err?.message || err));
-													} finally {
-														setUploadLoading(false);
-													}
-												}}
-											/>
-											{uploadError ? <div className="text-sm text-destructive">{uploadError}</div> : null}
-											{uploadLoading ? <div className="text-sm text-muted-foreground">Przesyłanie...</div> : null}
-										</div>
+                        {/* upload image when editing */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-muted-foreground">上传图片</label>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="block w-full text-sm"
+                                onChange={async (e) => {
+                                    const file = e.target.files && e.target.files[0];
+                                    if (!file) return;
+                                    setEditError('');
+                                    if (file.size > 2 * 1024 * 1024) {
+                                        setEditError('文件过大 (最大 2MB)');
+                                        return;
+                                    }
+                                    setUploadLoading(true);
+                                    try {
+                                        const formData = new FormData();
+                                        formData.append('file', file);
+                                        formData.append('type', 'post');
+                                        const res = await fetch('/api/upload', {
+                                            method: 'POST',
+                                            headers: getSecurityHeaders('POST', null),
+                                            body: formData,
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) throw new Error(data?.error || '上传失败');
+                                        // insert link at cursor and show preview
+                                        insertIntoEditContent(`
+
+![](${data.url})
+
+`);
+                                        setEditPreviewOpen(true);
+                                    } catch (err: any) {
+                                        setEditError(String(err?.message || err));
+                                    } finally {
+                                        setUploadLoading(false);
+                                    }
+                                }}
+                            />
+                            {uploadError ? <div className="text-sm text-destructive">{uploadError}</div> : null}
+                            {uploadLoading ? <div className="text-sm text-muted-foreground">上传中…</div> : null}
+                        </div>
 										{editPreviewOpen ? (
-											<div className="rounded-md border bg-muted/20 p-3">
-												<div className="mb-2 text-xs font-medium text-muted-foreground">Podgląd</div>
+<div className="rounded-md border bg-muted/20 p-3">
+												<div className="mb-2 text-xs font-medium text-muted-foreground">预览</div>
 												<div
 													ref={editPreviewRef}
 													className="prose max-w-none break-words [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1"
@@ -478,7 +525,7 @@ export function PostPage() {
 											</div>
 										) : null}
 										<Button onClick={saveEdit} disabled={editLoading}>
-											{editLoading ? 'Zapisywanie...' : 'Zapisz'}
+											{editLoading ? '保存中...' : '保存'}
 										</Button>
 									</div>
 								) : (
@@ -493,11 +540,11 @@ export function PostPage() {
 
 						<Card>
 							<CardHeader>
-								<CardTitle>Komentarze</CardTitle>
+								<CardTitle>评论</CardTitle>
 							</CardHeader>
 							<CardContent className="space-y-4">
 								{comments.length === 0 ? (
-									<div className="text-sm text-muted-foreground">Brak komentarzy</div>
+									<div className="text-sm text-muted-foreground">暂无评论</div>
 								) : (
 									<div className="space-y-3">
 										{organizeComments(comments).map((c) => (
@@ -506,7 +553,13 @@ export function PostPage() {
 													<div className="text-sm">
 														<span className="inline-flex items-center gap-2">
 															{c.avatar_url ? (
-																<img src={c.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+																<img
+																	src={c.avatar_url}
+																	alt=""
+																	className="h-6 w-6 rounded-full object-cover"
+																	loading="lazy"
+																	referrerPolicy="no-referrer"
+																/>
 															) : (
 																<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
 																	<User className="h-4 w-4" />
@@ -516,7 +569,7 @@ export function PostPage() {
 															{c.role === 'admin' ? (
 																<span className="inline-flex items-center gap-1 rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
 																	<Shield className="h-3 w-3" />
-																	<span className="sr-only">Administrator</span>
+																	<span className="sr-only">管理员</span>
 																</span>
 															) : null}
 															<span className="text-muted-foreground">{formatDate(c.created_at)}</span>
@@ -525,12 +578,12 @@ export function PostPage() {
 													<div className="flex items-center gap-2">
 														<Button variant="ghost" size="sm" onClick={() => setReplyTo(c)}>
 															<Reply className="h-4 w-4" />
-															<span className="sr-only">Odpowiedz</span>
+															<span className="sr-only">回复</span>
 														</Button>
 														{user && (user.role === 'admin' || user.id === c.author_id) ? (
 															<Button variant="ghost" size="sm" onClick={() => deleteComment(c.id)}>
 																<Trash2 className="h-4 w-4" />
-																<span className="sr-only">Usuń</span>
+																<span className="sr-only">删除</span>
 															</Button>
 														) : null}
 													</div>
@@ -544,7 +597,13 @@ export function PostPage() {
 																	<div className="text-xs">
 																		<span className="inline-flex items-center gap-2">
 																			{r.avatar_url ? (
-																				<img src={r.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+																				<img
+																					src={r.avatar_url}
+																					alt=""
+																					className="h-5 w-5 rounded-full object-cover"
+																					loading="lazy"
+																					referrerPolicy="no-referrer"
+																				/>
 																			) : (
 																				<span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
 																					<User className="h-3.5 w-3.5" />
@@ -554,7 +613,7 @@ export function PostPage() {
 																			{r.role === 'admin' ? (
 																				<span className="inline-flex items-center gap-1 rounded border border-indigo-500/30 bg-indigo-500/10 px-1 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
 																					<Shield className="h-3 w-3" />
-																					<span className="sr-only">Administrator</span>
+																					<span className="sr-only">管理员</span>
 																				</span>
 																			) : null}
 																			<span className="text-muted-foreground">{formatDate(r.created_at)}</span>
@@ -563,7 +622,7 @@ export function PostPage() {
 																	{user && (user.role === 'admin' || user.id === r.author_id) ? (
 																		<Button variant="ghost" size="sm" onClick={() => deleteComment(r.id)}>
 																			<Trash2 className="h-4 w-4" />
-																			<span className="sr-only">Usuń</span>
+																			<span className="sr-only">删除</span>
 																		</Button>
 																	) : null}
 																</div>
@@ -580,25 +639,25 @@ export function PostPage() {
 								{replyTo ? (
 									<div className="flex items-center justify-between rounded-md border bg-muted/30 p-2 text-sm">
 										<span>
-											Odpowiadasz: <span className="font-medium">{replyTo.username}</span>
+											回复 <span className="font-medium">{replyTo.username}</span>
 										</span>
 										<Button variant="ghost" size="sm" onClick={() => setReplyTo(null)}>
-											Anuluj
+											取消
 										</Button>
 									</div>
 								) : null}
 
 								<form className="space-y-3" onSubmit={submitComment}>
 									{commentError ? <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">{commentError}</div> : null}
-									<Textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} rows={4} placeholder="Napisz komentarz..." />
-									<TurnstileWidget enabled={turnstileActive} siteKey={siteKey} onToken={setTurnstileToken} resetKey={turnstileResetKey} />
+									<Textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} rows={4} placeholder="写下你的评论..." />
+						<TurnstileWidget enabled={turnstileActive} siteKey={siteKey} onToken={setTurnstileToken} resetKey={turnstileResetKey} />
 									<div className="flex items-center gap-2">
 										<Button type="submit" disabled={commentLoading}>
-											{commentLoading ? 'Publikowanie...' : 'Dodaj komentarz'}
+											{commentLoading ? '发布中...' : '发布评论'}
 										</Button>
 										{!user ? (
 											<Button type="button" variant="outline" onClick={() => (window.location.href = '/login')}>
-												Zaloguj się, aby komentować
+												登录后评论
 											</Button>
 										) : null}
 									</div>
