@@ -48,20 +48,52 @@ function extractImageUrls(content: string): string[] {
 	return urls;
 }
 
-// Utility to hash password
+// --- PBKDF2 password hashing (replaces plain SHA-256) ---
+const PBKDF2_ITERATIONS = 100_000;
+const SALT_LENGTH = 16; // bytes
+
 async function hashPassword(password: string): Promise<string> {
-	const myText = new TextEncoder().encode(password);
-	const myDigest = await crypto.subtle.digest(
-		{
-			name: 'SHA-256',
-		},
-		myText
+	const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+	const keyMaterial = await crypto.subtle.importKey(
+		'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
 	);
-	const hashArray = Array.from(new Uint8Array(myDigest));
-	const hashHex = hashArray
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
-	return hashHex;
+	const derived = await crypto.subtle.deriveBits(
+		{ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+		keyMaterial, 256
+	);
+	const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+	const hashHex = Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, '0')).join('');
+	return `pbkdf2:${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`;
+}
+
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+	if (stored.startsWith('pbkdf2:')) {
+		// New PBKDF2 format: pbkdf2:<iterations>:<salt_hex>:<hash_hex>
+		const [, iters, saltHex, hashHex] = stored.split(':');
+		const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(h => parseInt(h, 16)));
+		const keyMaterial = await crypto.subtle.importKey(
+			'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+		);
+		const derived = await crypto.subtle.deriveBits(
+			{ name: 'PBKDF2', salt, iterations: Number(iters), hash: 'SHA-256' },
+			keyMaterial, 256
+		);
+		const computedHex = Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, '0')).join('');
+		return computedHex === hashHex;
+	}
+	// Legacy SHA-256 fallback (no salt, plain hex)
+	const legacy = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+	const legacyHex = Array.from(new Uint8Array(legacy)).map(b => b.toString(16).padStart(2, '0')).join('');
+	return legacyHex === stored;
+}
+
+// Rehash legacy password to PBKDF2 (call after successful legacy verify)
+async function rehashIfLegacy(stored: string, password: string, userId: number, db: any): Promise<void> {
+	if (!stored.startsWith('pbkdf2:')) {
+		const newHash = await hashPassword(password);
+		await db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(newHash, userId).run();
+		console.log(`[Security] Migrated user ${userId} password to PBKDF2`);
+	}
 }
 
 function generateToken(): string {
@@ -85,6 +117,31 @@ function hasInvisibleCharacters(str: string): boolean {
 function hasRestrictedKeywords(username: string): boolean {
 	const restricted = ['administrator', 'admin', 'sudo', 'test'];
 	return restricted.some(keyword => username.toLowerCase().includes(keyword.toLowerCase()));
+}
+
+// --- Rate Limiter (in-memory, per-isolate) ---
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(key: string, maxRequests: number, windowMs: number): boolean {
+	const now = Date.now();
+	const entry = rateLimitMap.get(key);
+	if (!entry || now > entry.resetAt) {
+		rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+		return false;
+	}
+	entry.count++;
+	if (entry.count > maxRequests) return true;
+	return false;
+}
+
+// Cleanup stale entries periodically (max 1000 keys)
+function cleanupRateLimit() {
+	if (rateLimitMap.size > 1000) {
+		const now = Date.now();
+		for (const [key, val] of rateLimitMap) {
+			if (now > val.resetAt) rateLimitMap.delete(key);
+		}
+	}
 }
 
 async function verifyTurnstile(token: string, ip: string, secretKey: string): Promise<boolean> {
@@ -127,10 +184,14 @@ export default {
 		};
 
 		// CORS headers helper
+		// CORS — dynamiczny origin (env.ALLOWED_ORIGIN) lub fallback na request origin
+		const requestOrigin = request.headers.get('Origin') || '*';
+		const allowedOrigin = (env as any).ALLOWED_ORIGIN || requestOrigin;
 		const corsHeaders = {
-			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Origin': allowedOrigin,
 			'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS, DELETE, PUT',
 			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Timestamp, X-Nonce',
+			'Access-Control-Allow-Credentials': 'true',
 		};
 
 		// Handle OPTIONS (CORS preflight)
@@ -147,6 +208,19 @@ export default {
 				headers: corsHeaders,
 			});
 		};
+
+		// --- Rate limiting for auth endpoints ---
+		const clientIp = request.headers.get('CF-Connecting-IP') || '0.0.0.0';
+		cleanupRateLimit();
+
+		const rateLimitedPaths = ['/api/login', '/api/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/test-email'];
+		if (method === 'POST' && rateLimitedPaths.includes(url.pathname)) {
+			const rlKey = `${clientIp}:${url.pathname}`;
+			// 10 requests per 60 seconds per IP per endpoint
+			if (isRateLimited(rlKey, 10, 60_000)) {
+				return jsonResponse({ error: 'Zbyt wiele żądań. Spróbuj ponownie za chwilę.' }, 429);
+			}
+		}
 
 		// Serve R2 objects through Worker when using bucket binding
 		if (url.pathname.startsWith('/r2/') && (method === 'GET' || method === 'HEAD')) {
@@ -316,7 +390,7 @@ export default {
             '/api/config', '/api/login', '/api/register', '/api/verify', 
             '/api/auth/forgot-password', '/api/auth/reset-password', '/api/verify-email-change',
              // Static/Public GETs
-            '/api/posts', '/api/categories', '/api/users' 
+            '/api/posts', '/api/categories'
         ];
         
         // Relax check for public GETs that don't need nonce
@@ -495,10 +569,12 @@ export default {
 					return jsonResponse({ error: 'Please verify your email first' }, 403);
 				}
 
-				const passwordHash = await hashPassword(password);
-				if (user.password !== passwordHash) {
+				if (!await verifyPassword(password, user.password)) {
 					return jsonResponse({ error: 'Username or Password Error' }, 401);
 				}
+
+				// Auto-migrate legacy SHA-256 hash to PBKDF2
+				ctx.waitUntil(rehashIfLegacy(user.password, password, user.id, env.cforum_db));
 
 				// TOTP Check
 				if (user.totp_enabled) {
@@ -635,8 +711,7 @@ export default {
 				if (!user) return jsonResponse({ error: 'User not found' }, 404);
 
 				// Verify Password (Double check for sensitive delete op)
-				const passwordHash = await hashPassword(password);
-				if (user.password !== passwordHash) {
+				if (!await verifyPassword(password, user.password)) {
 					return jsonResponse({ error: 'Invalid password' }, 401);
 				}
 
@@ -1524,8 +1599,17 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		// GET /users
 		if (url.pathname === '/api/users' && method === 'GET') {
 			try {
+				// Wymaga uwierzytelnienia — tylko admin widzi pełną listę z e-mailami
+				const userPayload = await authenticate(request);
+				if (userPayload.role !== 'admin') {
+					// Zwykły user widzi tylko id, username, avatar
+					const { results } = await env.cforum_db.prepare(
+						'SELECT id, username, avatar_url, created_at FROM users'
+					).all();
+					return jsonResponse(results);
+				}
 				const { results } = await env.cforum_db.prepare(
-					'SELECT id, email, username, created_at FROM users'
+					'SELECT id, email, username, avatar_url, role, verified, created_at FROM users'
 				).all();
 				return jsonResponse(results);
 			} catch (e) {
