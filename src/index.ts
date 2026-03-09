@@ -83,7 +83,7 @@ function hasInvisibleCharacters(str: string): boolean {
 }
 
 function hasRestrictedKeywords(username: string): boolean {
-	const restricted = ['管理', 'admin', 'sudo', 'test'];
+	const restricted = ['administrator', 'admin', 'sudo', 'test'];
 	return restricted.some(keyword => username.toLowerCase().includes(keyword.toLowerCase()));
 }
 
@@ -343,7 +343,7 @@ export default {
 					env.cforum_db.prepare('SELECT COUNT(*) as count FROM users').first('count')
 				]);
 				
-				// 只有数据库设置为启用，且两个环境变量都配置时，才启用 Turnstile
+				// Turnstile aktywny tylko gdy włączony w bazie danych ORAZ oba klucze env są skonfigurowane
 				const dbEnabled = setting ? setting.value === '1' : false;
 				const siteKey = (env as any).TURNSTILE_SITE_KEY || '';
 				const secretKey = (env as any).TURNSTILE_SECRET_KEY || '';
@@ -416,7 +416,7 @@ export default {
 		// Helper to check Turnstile if enabled
 		const checkTurnstile = async (reqBody: any, ip: string) => {
 			const setting = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'turnstile_enabled'").first<DBSetting>();
-			// 只有数据库启用且两个环境变量都配置时才要求验证（与前端逻辑一致）
+			// Wymagaj weryfikacji tylko gdy włączone w bazie i oba klucze env skonfigurowane (spójne z frontendem)
 			const dbEnabled = setting && setting.value === '1';
 			const siteKey = (env as any).TURNSTILE_SITE_KEY;
 			const secretKey = (env as any).TURNSTILE_SECRET_KEY;
@@ -792,14 +792,14 @@ export default {
 				const resetLink = `${baseUrl}/reset?token=${token}`;
 				
 				const emailHtml = `
-					<h1>密码重置请求</h1>
-					<p>请点击下方链接重置您的密码：</p>
-					<a href="${resetLink}">重置密码</a>
-					<p>如果您未请求此操作，请忽略此邮件。</p>
-					<p>此链接将在 1 小时后失效。</p>
+					<h1>Prośba o reset hasła</h1>
+					<p>Kliknij poniższy link, aby zresetować hasło:</p>
+					<a href="${resetLink}">Resetuj hasło</a>
+					<p>Jeśli nie prosiłeś o tę operację, zignoruj tego e-maila.</p>
+					<p>Ten link wygaśnie za 1 godzinę.</p>
 				`;
 
-				ctx.waitUntil(sendEmail(email, '密码重置请求', emailHtml, env).catch(console.error));
+				ctx.waitUntil(sendEmail(email, 'Prośba o reset hasła', emailHtml, env).catch(console.error));
 				return jsonResponse({ success: true });
 			} catch (e) {
 				return handleError(e);
@@ -896,12 +896,12 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE id = ?').bin
 				const baseUrl = getBaseUrl();
 				const verifyLink = `${baseUrl}/api/verify-email-change?token=${token}`;
 				const emailHtml = `
-					<h1>确认更换邮箱</h1>
-					<p>请点击下方链接确认将您的邮箱更换为 ${new_email}：</p>
-					<a href="${verifyLink}">确认更换</a>
+					<h1>Potwierdź zmianę adresu e-mail</h1>
+					<p>Kliknij poniższy link, aby potwierdzić zmianę e-maila na ${new_email}:</p>
+					<a href="${verifyLink}">Potwierdź zmianę</a>
 				`;
 
-				ctx.waitUntil(sendEmail(new_email, '确认更换邮箱', emailHtml, env).catch(console.error));
+				ctx.waitUntil(sendEmail(new_email, 'Potwierdź zmianę adresu e-mail', emailHtml, env).catch(console.error));
 				return jsonResponse({ success: true });
 			} catch (e) {
 				return handleError(e);
@@ -964,10 +964,10 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 						const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 						if (user) {
 							const emailHtml = `
-								<h1>头像已更新</h1>
-								<p>您的头像已被管理员更新。</p>
+								<h1>Avatar został zaktualizowany</h1>
+								<p>Twój avatar został zmieniony przez administratora.</p>
 							`;
-							ctx.waitUntil(sendEmail(user.email, '您的头像已更新', emailHtml, env).catch(console.error));
+							ctx.waitUntil(sendEmail(user.email, 'Twój avatar został zaktualizowany', emailHtml, env).catch(console.error));
 						}
 					}
 				}
@@ -985,11 +985,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 						const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 						if (user) {
 							const emailHtml = `
-								<h1>用户名已修改</h1>
-								<p>您的用户名已被管理员修改为 <strong>${username}</strong>。</p>
-								<p>如有疑问，请联系管理员。</p>
+								<h1>Nazwa użytkownika została zmieniona</h1>
+								<p>Twoja nazwa użytkownika została zmieniona przez administratora na <strong>${username}</strong>.</p>
+								<p>W razie pytań skontaktuj się z administratorem.</p>
 							`;
-							ctx.waitUntil(sendEmail(user.email, '您的用户名已修改', emailHtml, env).catch(console.error));
+							ctx.waitUntil(sendEmail(user.email, 'Twoja nazwa użytkownika została zmieniona', emailHtml, env).catch(console.error));
 						}
 					}
 				}
@@ -1123,11 +1123,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					const user = await env.cforum_db.prepare('SELECT email, username FROM users WHERE id = ?').bind(id).first<{email:string;username:string}>();
 					if (!user) throw new Error('User unexpectedly missing');
 					const emailHtml = `
-						<h1>账户已验证</h1>
-						<p>您的账户 (用户名: <strong>${user.username}</strong>) 已通过管理员手动验证。</p>
-						<p>您现在可以登录并使用所有功能。</p>
+						<h1>Konto zweryfikowane</h1>
+						<p>Twoje konto (nazwa użytkownika: <strong>${user.username}</strong>) zostało ręcznie zweryfikowane przez administratora.</p>
+						<p>Możesz się teraz zalogować i korzystać ze wszystkich funkcji.</p>
 					`;
-					ctx.waitUntil(sendEmail(user.email as string, '您的账户已通过验证', emailHtml, env).catch(console.error));
+					ctx.waitUntil(sendEmail(user.email as string, 'Twoje konto zostało zweryfikowane', emailHtml, env).catch(console.error));
 				}
 
 				return jsonResponse({ success });
@@ -1157,20 +1157,20 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const baseUrl = getBaseUrl();
 				const verifyLink = `${baseUrl}/api/verify?token=${token}`;
 				const emailHtml = `
-					<h1>欢迎加入论坛，${user.username}！</h1>
-					<p>请点击下方链接验证您的邮箱地址：</p>
-					<a href="${verifyLink}">验证邮箱</a>
-					<p>如果您未请求此操作，请忽略此邮件。</p>
+					<h1>Witaj na forum, ${user.username}!</h1>
+					<p>Kliknij poniższy link, aby zweryfikować swój adres e-mail:</p>
+					<a href="${verifyLink}">Zweryfikuj e-mail</a>
+					<p>Jeśli nie prosiłeś o tę operację, zignoruj tego e-maila.</p>
 				`;
 
 				ctx.waitUntil(
-					sendEmail(user.email, '请验证您的邮箱', emailHtml, env)
+					sendEmail(user.email, 'Zweryfikuj swój adres e-mail', emailHtml, env)
 						.catch(err => console.error('[Background Email Error]', err))
 				);
 				
 				await security.logAudit(userPayload.id, 'RESEND_VERIFY_EMAIL', 'user', id, {}, request);
 
-				return jsonResponse({ success: true, message: '验证邮件已发送' });
+				return jsonResponse({ success: true, message: 'E-mail weryfikacyjny został wysłany' });
 			} catch (e) {
 				return handleError(e);
 			}
@@ -1223,11 +1223,11 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					const setting = await env.cforum_db.prepare("SELECT value FROM settings WHERE key = 'notify_on_user_delete'").first();
 					if (setting && setting.value === '1') {
 						const emailHtml = `
-							<h1>账户已删除</h1>
-							<p>您的账户 (用户名: <strong>${userToDelete.username}</strong>) 已被管理员删除。</p>
-							<p>如果您认为这是误操作，请联系管理员。</p>
+							<h1>Konto zostało usunięte</h1>
+							<p>Twoje konto (nazwa użytkownika: <strong>${userToDelete.username}</strong>) zostało usunięte przez administratora.</p>
+							<p>Jeśli uważasz, że to pomyłka, skontaktuj się z administratorem.</p>
 						`;
-						ctx.waitUntil(sendEmail(userToDelete.email as string, '您的账户已被删除', emailHtml, env).catch(console.error));
+						ctx.waitUntil(sendEmail(userToDelete.email as string, 'Twoje konto zostało usunięte', emailHtml, env).catch(console.error));
 					}
 				}
 
@@ -1398,13 +1398,13 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 			try {
 				const body = await request.json() as any;
 				const { to } = body;
-				if (!to) return jsonResponse({ error: '缺少收件人地址' }, 400);
+				if (!to) return jsonResponse({ error: 'Brak adresu odbiorcy' }, 400);
 
 				console.log('[DEBUG] Starting test email to:', to);
-				await sendEmail(to, '测试邮件', '<h1>你好</h1><p>这是一封测试邮件。</p>', env);
+				await sendEmail(to, 'E-mail testowy', '<h1>Cześć</h1><p>To jest testowy e-mail.</p>', env);
 				console.log('[DEBUG] Test email sent successfully');
 				
-				return jsonResponse({ success: true, message: '邮件已发送' });
+				return jsonResponse({ success: true, message: 'E-mail został wysłany' });
 			} catch (e) {
 				console.error('[DEBUG] Test email failed:', e);
 				return handleError(e);
@@ -1453,20 +1453,20 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 				const verifyLink = `${baseUrl}/api/verify?token=${verificationToken}`;
 				
 				const emailHtml = `
-					<h1>欢迎加入论坛，${username}！</h1>
-					<p>请点击下方链接验证您的邮箱地址：</p>
-					<a href="${verifyLink}">验证邮箱</a>
-					<p>如果您未请求此操作，请忽略此邮件。</p>
+					<h1>Witaj na forum, ${username}!</h1>
+					<p>Kliknij poniższy link, aby zweryfikować swój adres e-mail:</p>
+					<a href="${verifyLink}">Zweryfikuj e-mail</a>
+					<p>Jeśli nie prosiłeś o tę operację, zignoruj tego e-maila.</p>
 				`;
 
 				try {
-					await sendEmail(email, '请验证您的邮箱', emailHtml, env);
+					await sendEmail(email, 'Zweryfikuj swój adres e-mail', emailHtml, env);
 				} catch (e) {
 					console.error('[Registration Email Error]', e);
-					const errorMsg = e instanceof Error ? e.message : '未知错误';
+					const errorMsg = e instanceof Error ? e.message : 'Nieznany błąd';
 					return jsonResponse({ 
-						error: `验证邮件发送失败: ${errorMsg}`,
-						details: '请检查邮箱地址或联系管理员检查 SMTP 配置'
+						error: `Nie udało się wysłać e-maila weryfikacyjnego: ${errorMsg}`,
+						details: 'Sprawdź adres e-mail lub skontaktuj się z administratorem w sprawie konfiguracji SMTP'
 					}, 400);
 				}
 
@@ -1489,7 +1489,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					}
 				}
 
-				return jsonResponse({ success, message: '注册成功，请前往邮箱完成验证。' }, 201);
+				return jsonResponse({ success, message: 'Rejestracja udana — sprawdź e-mail, aby dokończyć weryfikację.' }, 201);
 			} catch (e: any) {
 				if (e.message && e.message.includes('UNIQUE constraint failed')) {
 					return jsonResponse({ error: 'Email already exists' }, 409);
@@ -1502,7 +1502,7 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 		if (url.pathname === '/api/verify' && method === 'GET') {
 			const token = url.searchParams.get('token');
 			if (!token) {
-				return new Response('缺少 token', { status: 400 });
+				return new Response('Brak tokena', { status: 400 });
 			}
 
 			try {
@@ -1514,10 +1514,10 @@ const user = await env.cforum_db.prepare('SELECT * FROM users WHERE email_change
 					// Redirect to home page with verified param
 					return Response.redirect(`${getBaseUrl()}/?verified=true`, 302);
 				} else {
-					return new Response('token 无效或已过期', { status: 400 });
+					return new Response('Token nieprawidłowy lub wygasł', { status: 400 });
 				}
 			} catch (e) {
-				return new Response('验证失败', { status: 500 });
+				return new Response('Weryfikacja nie powiodła się', { status: 500 });
 			}
 		}
 
