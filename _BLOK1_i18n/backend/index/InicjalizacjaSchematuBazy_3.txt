@@ -1,0 +1,65 @@
+// Zapewnia istnienie schematu bazy danych przed wszystkim innym
+const ensureSchema = async (env: any) => {
+  try {
+    await env.cforumdb.prepare('SELECT 1 FROM posts LIMIT 1').first()
+    return
+  } catch (err: any) {
+    console.warn('Brakuje schematu bazy danych, inicjalizacja...', err)
+  }
+
+  // Używanie prepare.run zamiast exec zapewnia zatwierdzenie każdej instrukcji
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT DEFAULT 'user',
+      verified INTEGER DEFAULT 0,
+      verificationtoken TEXT,
+      totpsecret TEXT,
+      totpenabled INTEGER DEFAULT 0,
+      resettoken TEXT,
+      resettokenexpires INTEGER,
+      pendingemail TEXT,
+      emailchangetoken TEXT,
+      avatarurl TEXT,
+      nickname TEXT,
+      emailnotifications INTEGER DEFAULT 1,
+      createdat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      createdat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      authorid INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      categoryid INTEGER,
+      ispinned INTEGER DEFAULT 0,
+      viewcount INTEGER NOT NULL DEFAULT 0,
+      createdat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(authorid) REFERENCES users(id),
+      FOREIGN KEY(categoryid) REFERENCES categories(id)
+    )`,
+    // ... więcej tabel (comments, likes, settings, etc.)
+  ]
+
+  for (const stmt of stmts) {
+    try {
+      await env.cforumdb.prepare(stmt).run()
+    } catch (e) {
+      console.error('Błąd podczas uruchamiania instrukcji schematu:', e, stmt)
+    }
+  }
+
+  // Weryfikacja istnienia tabeli posts
+  try {
+    await env.cforumdb.prepare('SELECT 1 FROM posts LIMIT 1').first()
+  } catch (e) {
+    console.error('Nie udało się zweryfikować tabeli posts po inicjalizacji', e)
+  }
+}

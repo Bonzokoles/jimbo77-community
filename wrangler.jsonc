@@ -4,23 +4,21 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "cforum",
+	"name": "jimbo77-community",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-27",
-	"compatibility_flags": [
-		"global_fetch_strictly_public"
-	],
+	"compatibility_flags": ["global_fetch_strictly_public"],
 	"observability": {
-		"enabled": true
+		"enabled": true,
 	},
 	"d1_databases": [
 		{
 			"binding": "cforum_db",
-			"database_name": "cforum-db",
+			"database_name": "jimbo77-community-db",
 			"database_id": "851270eb-80b8-4e31-825e-645d444898d6",
 			"remote": true,
-			"migrations_dir": "migrations"
-		}
+			"migrations_dir": "migrations",
+		},
 	],
 	/**
 	 * R2 Object Storage (for image uploads)
@@ -29,8 +27,8 @@
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "cforum-images"
-		}
+			"bucket_name": "jimbo77-community-images",
+		},
 	],
 	/**
 	 * Enable default *.workers.dev domain
@@ -39,7 +37,7 @@
 	/**
 	 * Custom domain routes (only needed if binding custom domains)
 	 * https://developers.cloudflare.com/workers/configuration/routing/
-	 * 
+	 *
 	 * Example for custom domain binding:
 	 * "routes": [
 	 *   {
@@ -65,7 +63,7 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 * 
+	 *
 	 * IMPORTANT: Set JWT_SECRET as a secret (NOT here):
 	 * wrangler secret put JWT_SECRET
 	 * Generate a random value with: head -c 32 /dev/urandom | base64
@@ -76,21 +74,21 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
 	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
-	
+
 	/**
-	 * Cloudflare Pages + Worker 混合配置
-	 * D1 数据库和 R2 存储已配置，Pages Functions 作为 API 网关
+	 * Cloudflare Pages + Worker konfiguracja hybrydowa
+	 * D1 oraz R2 są skonfigurowane, Pages Functions pełni rolę API gateway
 	 */
 	"env": {
 		"production": {
 			"vars": {
-				"WORKER_URL": "https://cforum.adysec.workers.dev"
-			}
+				"WORKER_URL": "https://jimbo77-community.adysec.workers.dev",
+			},
 		},
 		"development": {
 			"vars": {
-				"WORKER_URL": "http://localhost:8787"
-			}
-		}
-	}
+				"WORKER_URL": "http://localhost:8787",
+			},
+		},
+	},
 }
