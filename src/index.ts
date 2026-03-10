@@ -842,6 +842,112 @@ export default {
 			}
 		}
 
+		// GET /api/user/me — fetch current authenticated user
+		if (url.pathname === '/api/user/me' && method === 'GET') {
+			try {
+				const userPayload = await authenticate(request);
+				const user = await env.jimbo77_community_db.prepare(
+					'SELECT id, email, username, avatar_url, role, totp_enabled, email_notifications, created_at FROM users WHERE id = ?'
+				).bind(userPayload.id).first<DBUser>();
+				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+
+				return jsonResponse({
+					id: user.id,
+					email: user.email,
+					username: user.username,
+					avatar_url: user.avatar_url,
+					role: user.role || 'user',
+					totp_enabled: !!user.totp_enabled,
+					email_notifications: (user as any).email_notifications === 1,
+					created_at: (user as any).created_at
+				});
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// POST /api/user/change-password — change password while logged in
+		if (url.pathname === '/api/user/change-password' && method === 'POST') {
+			try {
+				const userPayload = await authenticate(request);
+				const body = await request.json() as any;
+				const { current_password, new_password, totp_code } = body;
+
+				if (!current_password || !new_password) return jsonResponse({ error: 'Missing parameters' }, 400);
+				if (new_password.length < 8 || new_password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
+
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(userPayload.id).first<DBUser>();
+				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+
+				// Verify current password
+				if (!await verifyPassword(current_password, user.password)) {
+					return jsonResponse({ error: 'Invalid current password' }, 401);
+				}
+
+				// Verify TOTP if enabled
+				if (user.totp_enabled) {
+					if (!totp_code) return jsonResponse({ error: 'TOTP_REQUIRED' }, 403);
+					if (!user.totp_secret) return jsonResponse({ error: 'TOTP not configured' }, 500);
+					const totp = new OTPAuth.TOTP({
+						algorithm: 'SHA1', digits: 6, period: 30,
+						secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
+					});
+					if (totp.validate({ token: totp_code, window: 1 }) === null) {
+						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+					}
+				}
+
+				const newHash = await hashPassword(new_password);
+				await env.jimbo77_community_db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(newHash, userPayload.id).run();
+
+				// Invalidate all other sessions
+				await env.jimbo77_community_db.prepare('DELETE FROM sessions WHERE user_id = ? AND jti != ?')
+					.bind(userPayload.id, (userPayload as any).jti || '').run();
+
+				await security.logAudit(userPayload.id, 'CHANGE_PASSWORD', 'user', String(userPayload.id), {}, request);
+				return jsonResponse({ success: true, message: 'Password changed. Other sessions invalidated.' });
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// POST /api/user/totp/disable — disable TOTP 2FA
+		if (url.pathname === '/api/user/totp/disable' && method === 'POST') {
+			try {
+				const userPayload = await authenticate(request);
+				const body = await request.json() as any;
+				const { password, totp_code } = body;
+
+				if (!password || !totp_code) return jsonResponse({ error: 'Missing password and TOTP code' }, 400);
+
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(userPayload.id).first<DBUser>();
+				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user.totp_enabled) return jsonResponse({ error: 'TOTP is not enabled' }, 400);
+
+				// Verify password
+				if (!await verifyPassword(password, user.password)) {
+					return jsonResponse({ error: 'Invalid password' }, 401);
+				}
+
+				// Verify current TOTP code
+				if (!user.totp_secret) return jsonResponse({ error: 'TOTP not configured' }, 500);
+				const totp = new OTPAuth.TOTP({
+					algorithm: 'SHA1', digits: 6, period: 30,
+					secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
+				});
+				if (totp.validate({ token: totp_code, window: 1 }) === null) {
+					return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+				}
+
+				await env.jimbo77_community_db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').bind(userPayload.id).run();
+				await security.logAudit(userPayload.id, 'DISABLE_TOTP', 'user', String(userPayload.id), {}, request);
+
+				return jsonResponse({ success: true });
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
 		// POST /api/auth/forgot-password
 		if (url.pathname === '/api/auth/forgot-password' && method === 'POST') {
 			try {
@@ -1492,6 +1598,99 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			}
 		}
 
+		// GET /api/admin/audit-logs — view audit trail
+		if (url.pathname === '/api/admin/audit-logs' && method === 'GET') {
+			try {
+				const userPayload = await authenticate(request);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+
+				const limit = parseInt(url.searchParams.get('limit') || '50');
+				const offset = parseInt(url.searchParams.get('offset') || '0');
+				const action = url.searchParams.get('action');
+				const userId = url.searchParams.get('user_id');
+
+				let query = `SELECT audit_logs.*, users.username
+					 FROM audit_logs
+					 LEFT JOIN users ON audit_logs.user_id = users.id`;
+				let countQuery = `SELECT COUNT(*) as total FROM audit_logs`;
+				const conditions: string[] = [];
+				const params: any[] = [];
+				const countParams: any[] = [];
+
+				if (action) {
+					conditions.push('audit_logs.action = ?');
+					params.push(action);
+					countParams.push(action);
+				}
+				if (userId) {
+					conditions.push('audit_logs.user_id = ?');
+					params.push(userId);
+					countParams.push(userId);
+				}
+
+				if (conditions.length) {
+					const where = ` WHERE ${conditions.join(' AND ')}`;
+					query += where;
+					countQuery += where;
+				}
+
+				query += ` ORDER BY audit_logs.created_at DESC LIMIT ? OFFSET ?`;
+				params.push(limit, offset);
+
+				const [logsResult, countResult] = await Promise.all([
+					env.jimbo77_community_db.prepare(query).bind(...params).all(),
+					env.jimbo77_community_db.prepare(countQuery).bind(...countParams).first()
+				]);
+
+				return jsonResponse({
+					logs: logsResult.results,
+					total: countResult ? (countResult as any).total : 0
+				});
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// GET /api/user/sessions — list active sessions
+		if (url.pathname === '/api/user/sessions' && method === 'GET') {
+			try {
+				const userPayload = await authenticate(request);
+				const { results } = await env.jimbo77_community_db.prepare(
+					'SELECT jti, created_at, expires_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC'
+				).bind(userPayload.id, Math.floor(Date.now() / 1000)).all();
+				return jsonResponse(results);
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// DELETE /api/user/sessions/:jti — revoke a specific session
+		if (url.pathname.match(/^\/api\/user\/sessions\/[\w-]+$/) && method === 'DELETE') {
+			const jti = url.pathname.split('/').pop();
+			try {
+				const userPayload = await authenticate(request);
+				await env.jimbo77_community_db.prepare('DELETE FROM sessions WHERE jti = ? AND user_id = ?').bind(jti, userPayload.id).run();
+				await security.logAudit(userPayload.id, 'REVOKE_SESSION', 'session', String(jti), {}, request);
+				return jsonResponse({ success: true });
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// POST /api/user/sessions/revoke-all — revoke all sessions except current
+		if (url.pathname === '/api/user/sessions/revoke-all' && method === 'POST') {
+			try {
+				const userPayload = await authenticate(request);
+				const authHeader = request.headers.get('Authorization');
+				// We can't easily get the JTI from outside security module, so delete all and re-login is safer
+				await env.jimbo77_community_db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userPayload.id).run();
+				await security.logAudit(userPayload.id, 'REVOKE_ALL_SESSIONS', 'user', String(userPayload.id), {}, request);
+				return jsonResponse({ success: true, message: 'All sessions revoked. Please log in again.' });
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
 		// --- END ADMIN ROUTES ---
 
 		// TEST: Email Debug
@@ -1861,6 +2060,73 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
                      ORDER BY created_at ASC`
 				).bind(postId).all();
 				return jsonResponse(results);
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// POST /api/posts/:id/comments (create comment)
+		if (url.pathname.match(/^\/api\/posts\/\d+\/comments$/) && method === 'POST') {
+			const postId = url.pathname.split('/')[3];
+			try {
+				const userPayload = await authenticate(request);
+				const body = await request.json() as any;
+				let { content, parent_id } = body;
+
+				if (!content) return jsonResponse({ error: 'Missing content' }, 400);
+				if (isVisuallyEmpty(content)) return jsonResponse({ error: 'Comment cannot be empty' }, 400);
+				if (hasInvisibleCharacters(content)) return jsonResponse({ error: 'Comment contains invalid invisible characters' }, 400);
+				if (hasControlCharacters(content)) return jsonResponse({ error: 'Comment contains invalid control characters' }, 400);
+				if (content.length > 1000) return jsonResponse({ error: 'Comment too long (Max 1000 chars)' }, 400);
+
+				// Verify post exists
+				const post = await env.jimbo77_community_db.prepare('SELECT id, title, author_id FROM posts WHERE id = ?').bind(postId).first();
+				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
+
+				// Verify parent comment exists (if replying)
+				if (parent_id) {
+					const parent = await env.jimbo77_community_db.prepare('SELECT id FROM comments WHERE id = ? AND post_id = ?').bind(parent_id, postId).first();
+					if (!parent) return jsonResponse({ error: 'Parent comment not found' }, 404);
+				}
+
+				// HTML escape
+				content = content
+					.replace(/&/g, '&amp;')
+					.replace(/</g, '&lt;')
+					.replace(/>/g, '&gt;')
+					.replace(/"/g, '&quot;')
+					.replace(/'/g, '&#039;');
+
+				const { success, meta } = await env.jimbo77_community_db.prepare(
+					'INSERT INTO comments (post_id, parent_id, author_id, content) VALUES (?, ?, ?, ?)'
+				).bind(postId, parent_id || null, userPayload.id, content.trim()).run();
+
+				await security.logAudit(userPayload.id, 'CREATE_COMMENT', 'comment', String(meta?.last_row_id || 'new'), { post_id: postId }, request);
+
+				// Email notification to post author (background)
+				if (post.author_id !== userPayload.id) {
+					const postAuthor = await env.jimbo77_community_db.prepare(
+						'SELECT email, username, email_notifications FROM users WHERE id = ?'
+					).bind(post.author_id).first<{ email: string; username: string; email_notifications: number }>();
+					if (postAuthor && postAuthor.email_notifications) {
+						const commenterUser = await env.jimbo77_community_db.prepare('SELECT username FROM users WHERE id = ?').bind(userPayload.id).first<{ username: string }>();
+						const emailHtml = `
+							<h1>Nowy komentarz do Twojego posta</h1>
+							<p><strong>${commenterUser?.username || 'Użytkownik'}</strong> skomentował Twój post "${post.title}".</p>
+							<p>Zaloguj się, aby zobaczyć komentarz.</p>
+						`;
+						ctx.waitUntil(sendEmail(postAuthor.email, 'Nowy komentarz do Twojego posta', emailHtml, env).catch(console.error));
+					}
+				}
+
+				// Return the new comment with user data
+				const newComment = await env.jimbo77_community_db.prepare(
+					`SELECT comments.*, users.username, users.avatar_url, users.role
+					 FROM comments JOIN users ON comments.author_id = users.id
+					 WHERE comments.id = ?`
+				).bind(meta?.last_row_id).first();
+
+				return jsonResponse(newComment || { success }, 201);
 			} catch (e) {
 				return handleError(e);
 			}
