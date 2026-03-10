@@ -382,7 +382,7 @@ export default {
 		const handleError = (e: any) => {
 			const errString = String(e);
 			if (errString.includes('Unauthorized') || errString.includes('Invalid Token')) {
-				return jsonResponse({ error: 'Unauthorized' }, 401);
+				return jsonResponse({ error: 'Brak autoryzacji' }, 401);
 			}
 			return jsonResponse({ error: errString }, 500);
 		};
@@ -440,7 +440,7 @@ export default {
 		if (url.pathname === '/api/admin/settings' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const settings = await env.jimbo77_community_db.prepare("SELECT key, value FROM settings").all();
 				const config: any = {
@@ -467,7 +467,7 @@ export default {
 		if (url.pathname === '/api/admin/settings' && method === 'POST') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { turnstile_enabled, notify_on_user_delete, notify_on_username_change, notify_on_avatar_change, notify_on_manual_verify } = body;
@@ -518,11 +518,11 @@ export default {
 				const type = formData.get('type') || 'post';
 
 				if (!file || !(file instanceof File)) {
-					return jsonResponse({ error: 'No file uploaded' }, 400);
+					return jsonResponse({ error: 'Nie przesłano pliku' }, 400);
 				}
 
 				if (!file.type.startsWith('image/')) {
-					return jsonResponse({ error: 'Only images are allowed' }, 400);
+					return jsonResponse({ error: 'Dozwolone tylko obrazy' }, 400);
 				}
 
 // Check file size (2MB = 2 * 1024 * 1024 bytes)
@@ -551,12 +551,12 @@ export default {
 				// Turnstile Check
 				const ip = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
 				if (!(await checkTurnstile(body, ip))) {
-					return jsonResponse({ error: 'Turnstile verification failed' }, 403);
+					return jsonResponse({ error: 'Weryfikacja CAPTCHA nie powiodła się' }, 403);
 				}
 
 				const { email, password, totp_code } = body;
 				if (!email || !password) {
-					return jsonResponse({ error: 'Missing email or password' }, 400);
+					return jsonResponse({ error: 'Podaj e-mail i hasło' }, 400);
 				}
 
 				const user = await env.jimbo77_community_db
@@ -564,15 +564,15 @@ export default {
 					.bind(email)
 					.first<DBUser>();
 				if (!user) {
-					return jsonResponse({ error: 'Username or Password Error' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowy e-mail lub hasło' }, 401);
 				}
 
 				if (!user.verified) {
-					return jsonResponse({ error: 'Please verify your email first' }, 403);
+					return jsonResponse({ error: 'Najpierw zweryfikuj swój e-mail (sprawdź skrzynkę)' }, 403);
 				}
 
 				if (!await verifyPassword(password, user.password)) {
-					return jsonResponse({ error: 'Username or Password Error' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowy e-mail lub hasło' }, 401);
 				}
 
 				// Auto-migrate legacy SHA-256 hash to PBKDF2
@@ -584,7 +584,7 @@ export default {
 						return jsonResponse({ error: 'TOTP_REQUIRED' }, 403);
 					}
 					if (!user.totp_secret) {
-						return jsonResponse({ error: 'TOTP not configured' }, 500);
+						return jsonResponse({ error: 'TOTP nie skonfigurowane — skontaktuj się z adminem' }, 500);
 					}
 
 					const totp = new OTPAuth.TOTP({
@@ -596,7 +596,7 @@ export default {
 
 					const delta = totp.validate({ token: totp_code, window: 1 });
 					if (delta === null) {
-						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+						return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 					}
 				}
 
@@ -636,23 +636,23 @@ export default {
 				const user_id = userPayload.id;
 
 				if (username) {
-					if (username.length > 20) return jsonResponse({ error: 'Username too long (Max 20 chars)' }, 400);
-					if (isVisuallyEmpty(username)) return jsonResponse({ error: 'Username cannot be empty' }, 400);
-					if (hasInvisibleCharacters(username)) return jsonResponse({ error: 'Username contains invalid invisible characters' }, 400);
-					if (hasControlCharacters(username)) return jsonResponse({ error: 'Username contains invalid control characters' }, 400);
-					if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Username contains restricted keywords' }, 400);
+					if (username.length > 20) return jsonResponse({ error: 'Nazwa max 20 znaków' }, 400);
+					if (isVisuallyEmpty(username)) return jsonResponse({ error: 'Nazwa użytkownika nie może być pusta' }, 400);
+					if (hasInvisibleCharacters(username)) return jsonResponse({ error: 'Nazwa zawiera niedozwolone niewidoczne znaki' }, 400);
+					if (hasControlCharacters(username)) return jsonResponse({ error: 'Nazwa zawiera niedozwolone znaki sterujące' }, 400);
+					if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Nazwa zawiera zastrzeżone słowa kluczowe' }, 400);
 					
 					// Check Uniqueness
 					const existingUser = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').bind(username, user_id).first<{id:number}>();
 					if (existingUser) {
-						return jsonResponse({ error: 'Username already taken' }, 409);
+						return jsonResponse({ error: 'Ta nazwa użytkownika jest już zajęta' }, 409);
 					}
 				}
 
 				// Fetch current user
 				const currentUser = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-			if (!currentUser) return jsonResponse({ error: 'User not found' }, 404);
-				if (!currentUser) return jsonResponse({ error: 'User not found' }, 404);
+			if (!currentUser) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
+				if (!currentUser) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				let newUsername = currentUser.username;
 				if (username !== undefined) {
@@ -666,7 +666,7 @@ export default {
 						newAvatarUrl = await generateIdenticon(String(user_id));
 					} else {
 						if (avatar_url.length > 500) return jsonResponse({ error: 'Avatar URL too long (Max 500 chars)' }, 400);
-						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Invalid Avatar URL (Must start with http:// or https://)' }, 400);
+						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Nieprawidłowy URL avatara (musi zaczynać się od http:// lub https://)' }, 400);
 						newAvatarUrl = avatar_url;
 					}
 				}
@@ -680,7 +680,7 @@ export default {
 					.bind(newUsername, newAvatarUrl, newEmailNotif, user_id).run();
 
 			const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-			if (!user) return jsonResponse({ error: 'User not found' }, 404);
+			if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				return jsonResponse({
 					success: true,
 					user: {
@@ -705,16 +705,16 @@ export default {
 				const body = await request.json() as any;
 				const { password, totp_code } = body;
 				
-				if (!password) return jsonResponse({ error: 'Missing credentials' }, 400);
+				if (!password) return jsonResponse({ error: 'Podaj hasło' }, 400);
 
 				const user_id = userPayload.id;
 
 				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				// Verify Password (Double check for sensitive delete op)
 				if (!await verifyPassword(password, user.password)) {
-					return jsonResponse({ error: 'Invalid password' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowe hasło' }, 401);
 				}
 
 				// Verify TOTP if enabled
@@ -728,7 +728,7 @@ export default {
 						secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
 					});
 					if (totp.validate({ token: totp_code, window: 1 }) === null) {
-						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+						return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 					}
 				}
 
@@ -785,7 +785,7 @@ export default {
 				await env.jimbo77_community_db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?').bind(secretBase32, user_id).run();
 
 				const user = await env.jimbo77_community_db.prepare('SELECT email FROM users WHERE id = ?').bind(user_id).first<DBUserEmail>();
-			if (!user) return jsonResponse({ error: 'User not found' }, 404);
+			if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				
 				await security.logAudit(userPayload.id, 'SETUP_TOTP', 'user', String(user_id), {}, request);
 
@@ -815,7 +815,7 @@ export default {
 				const { token } = body;
 				const user_id = userPayload.id; // Force use of authenticated ID
 
-				if (!token) return jsonResponse({ error: 'Missing parameters' }, 400);
+				if (!token) return jsonResponse({ error: 'Brak wymaganych parametrów' }, 400);
 
 				const user = await env.jimbo77_community_db.prepare('SELECT totp_secret FROM users WHERE id = ?').bind(user_id).first<DBUserTotp>();
 				
@@ -835,7 +835,7 @@ export default {
 					await security.logAudit(userPayload.id, 'ENABLE_TOTP', 'user', String(user_id), {}, request);
 					return jsonResponse({ success: true });
 				} else {
-					return jsonResponse({ error: 'Invalid code' }, 400);
+					return jsonResponse({ error: 'Nieprawidłowy kod weryfikacyjny' }, 400);
 				}
 			} catch (e) {
 				return handleError(e);
@@ -849,7 +849,7 @@ export default {
 				const user = await env.jimbo77_community_db.prepare(
 					'SELECT id, email, username, avatar_url, role, totp_enabled, email_notifications, created_at FROM users WHERE id = ?'
 				).bind(userPayload.id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				return jsonResponse({
 					id: user.id,
@@ -873,15 +873,15 @@ export default {
 				const body = await request.json() as any;
 				const { current_password, new_password, totp_code } = body;
 
-				if (!current_password || !new_password) return jsonResponse({ error: 'Missing parameters' }, 400);
-				if (new_password.length < 8 || new_password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
+				if (!current_password || !new_password) return jsonResponse({ error: 'Podaj obecne i nowe hasło' }, 400);
+				if (new_password.length < 8 || new_password.length > 16) return jsonResponse({ error: 'Hasło musi mieć 8–16 znaków' }, 400);
 
 				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(userPayload.id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				// Verify current password
 				if (!await verifyPassword(current_password, user.password)) {
-					return jsonResponse({ error: 'Invalid current password' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowe obecne hasło' }, 401);
 				}
 
 				// Verify TOTP if enabled
@@ -893,7 +893,7 @@ export default {
 						secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
 					});
 					if (totp.validate({ token: totp_code, window: 1 }) === null) {
-						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+						return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 					}
 				}
 
@@ -918,15 +918,15 @@ export default {
 				const body = await request.json() as any;
 				const { password, totp_code } = body;
 
-				if (!password || !totp_code) return jsonResponse({ error: 'Missing password and TOTP code' }, 400);
+				if (!password || !totp_code) return jsonResponse({ error: 'Podaj hasło i kod 2FA' }, 400);
 
 				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(userPayload.id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				if (!user.totp_enabled) return jsonResponse({ error: 'TOTP is not enabled' }, 400);
 
 				// Verify password
 				if (!await verifyPassword(password, user.password)) {
-					return jsonResponse({ error: 'Invalid password' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowe hasło' }, 401);
 				}
 
 				// Verify current TOTP code
@@ -936,7 +936,7 @@ export default {
 					secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
 				});
 				if (totp.validate({ token: totp_code, window: 1 }) === null) {
-					return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+					return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 				}
 
 				await env.jimbo77_community_db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').bind(userPayload.id).run();
@@ -960,7 +960,7 @@ export default {
 				}
 
 				const { email } = body;
-				if (!email) return jsonResponse({ error: 'Missing email' }, 400);
+				if (!email) return jsonResponse({ error: 'Podaj adres e-mail' }, 400);
 
 				const user = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
 				if (!user) return jsonResponse({ success: true }); // Silent fail
@@ -1001,13 +1001,13 @@ export default {
 				}
 
 				const { token, new_password, totp_code } = body;
-				if (!token || !new_password) return jsonResponse({ error: 'Missing parameters' }, 400);
+				if (!token || !new_password) return jsonResponse({ error: 'Brak wymaganych parametrów' }, 400);
 
 				if (new_password.length < 8 || new_password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
 
 				// Verify token
 				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE reset_token = ?').bind(token).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'Invalid token' }, 400);
+				if (!user) return jsonResponse({ error: 'Nieprawidłowy lub wygasły token' }, 400);
 				if (!user.reset_token_expires || Date.now() > user.reset_token_expires) return jsonResponse({ error: 'Token expired' }, 400);
 
 				// If user has 2FA, require it
@@ -1021,7 +1021,7 @@ export default {
 						secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
 					});
 					if (totp.validate({ token: totp_code, window: 1 }) === null) {
-						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+						return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 					}
 				}
 
@@ -1042,14 +1042,14 @@ export default {
 				const body = await request.json() as any;
 				const { new_email, totp_code } = body; 
 				
-				if (!new_email) return jsonResponse({ error: 'Missing parameters' }, 400);
+				if (!new_email) return jsonResponse({ error: 'Podaj nowy adres e-mail' }, 400);
 				
-				if (new_email.length > 50) return jsonResponse({ error: 'Email too long (Max 50 chars)' }, 400);
+				if (new_email.length > 50) return jsonResponse({ error: 'E-mail max 50 znaków' }, 400);
 				
 				const user_id = userPayload.id;
 
 const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				// Verify 2FA if enabled
 				if (user.totp_enabled) {
@@ -1062,13 +1062,13 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE i
 						secret: OTPAuth.Secret.fromBase32(String(user.totp_secret))
 					});
 					if (totp.validate({ token: totp_code, window: 1 }) === null) {
-						return jsonResponse({ error: 'Invalid TOTP code' }, 401);
+						return jsonResponse({ error: 'Nieprawidłowy kod 2FA' }, 401);
 					}
 				}
 
 				// Check if email already exists
 				const exists = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE email = ?').bind(new_email).first();
-				if (exists) return jsonResponse({ error: 'Email already in use' }, 400);
+				if (exists) return jsonResponse({ error: 'Ten e-mail jest już w użyciu' }, 400);
 
 				const token = generateToken();
 				await env.jimbo77_community_db.prepare('UPDATE users SET pending_email = ?, email_change_token = ? WHERE id = ?')
@@ -1114,19 +1114,19 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { password, email, username, avatar_url } = body;
 
-				if (password && (password.length < 8 || password.length > 16)) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
+				if (password && (password.length < 8 || password.length > 16)) return jsonResponse({ error: 'Hasło musi mieć 8–16 znaków' }, 400);
 
 				if (password) {
 					const hash = await hashPassword(password);
 					await env.jimbo77_community_db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hash, id).run();
 				}
 				if (email) {
-					if (email.length > 50) return jsonResponse({ error: 'Email too long (Max 50 chars)' }, 400);
+					if (email.length > 50) return jsonResponse({ error: 'E-mail max 50 znaków' }, 400);
 					await env.jimbo77_community_db.prepare('UPDATE users SET email = ? WHERE id = ?').bind(email, id).run();
 				}
 				if (avatar_url !== undefined) {
@@ -1137,7 +1137,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, id).run();
 					} else {
 						if (avatar_url.length > 500) return jsonResponse({ error: 'Avatar URL too long (Max 500 chars)' }, 400);
-						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Invalid Avatar URL' }, 400);
+						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Nieprawidłowy URL avatara' }, 400);
 						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(avatar_url, id).run();
 					}
 
@@ -1223,11 +1223,11 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/categories' && method === 'POST') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { name } = body;
-				if (!name) return jsonResponse({ error: 'Missing name' }, 400);
+				if (!name) return jsonResponse({ error: 'Podaj nazwę' }, 400);
 				
 				const { success } = await env.jimbo77_community_db.prepare('INSERT INTO categories (name) VALUES (?)').bind(name).run();
 				await security.logAudit(userPayload.id, 'CREATE_CATEGORY', 'category', name, {}, request);
@@ -1242,11 +1242,11 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { name } = body;
-				if (!name) return jsonResponse({ error: 'Missing name' }, 400);
+				if (!name) return jsonResponse({ error: 'Podaj nazwę' }, 400);
 				
 				await env.jimbo77_community_db.prepare('UPDATE categories SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(name, id).run();
 				await security.logAudit(userPayload.id, 'UPDATE_CATEGORY', 'category', id, { name }, request);
@@ -1261,7 +1261,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				// Check if there are posts in this category
 				const count = await env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM posts WHERE category_id = ?').bind(id).first<number>('count');
@@ -1283,7 +1283,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/stats' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const [userCount, postCount, commentCount] = await Promise.all([
 					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM users').first<number>('count'),
@@ -1305,7 +1305,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/users' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const { results } = await env.jimbo77_community_db.prepare('SELECT id, email, username, role, verified, created_at, avatar_url FROM users ORDER BY created_at DESC').all();
 				return jsonResponse(results);
@@ -1319,7 +1319,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const { success } = await env.jimbo77_community_db.prepare('UPDATE users SET verified = 1, verification_token = NULL WHERE id = ?').bind(id).run();
 				await security.logAudit(userPayload.id, 'MANUAL_VERIFY_USER', 'user', id, {}, request);
@@ -1348,10 +1348,10 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<DBUser>();
-				if (!user) return jsonResponse({ error: 'User not found' }, 404);
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				if (user.verified) return jsonResponse({ error: 'User already verified' }, 400);
 
 				// Generate new token if needed, or use existing
@@ -1388,7 +1388,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/').pop();
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				// 0. Delete user avatar and post images
 				const user = await env.jimbo77_community_db.prepare('SELECT avatar_url FROM users WHERE id = ?').bind(id).first<{avatar_url?: string}>();
@@ -1449,7 +1449,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/').pop();
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				// Delete images in post
 				const post = await env.jimbo77_community_db.prepare('SELECT content, author_id FROM posts WHERE id = ?').bind(id).first();
@@ -1476,7 +1476,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/').pop();
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				// Delete the comment AND its children (orphans prevention)
 				await env.jimbo77_community_db.prepare('DELETE FROM comments WHERE parent_id = ?').bind(id).run();
@@ -1494,7 +1494,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { pinned } = body;
@@ -1512,7 +1512,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			const id = url.pathname.split('/')[4];
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const body = await request.json() as any;
 				const { category_id } = body;
@@ -1536,7 +1536,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/cleanup/analyze' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
                                 
 				// 1. List all S3 objects
 				const allKeys = await listAllKeys(env as unknown as S3Env);
@@ -1581,12 +1581,12 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/cleanup/execute' && method === 'POST') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 				
 				const body = await request.json() as any;
 				const { orphans } = body;
 				
-				if (!orphans || !Array.isArray(orphans)) return jsonResponse({ error: 'Invalid parameters' }, 400);
+				if (!orphans || !Array.isArray(orphans)) return jsonResponse({ error: 'Nieprawidłowe parametry' }, 400);
 
 				const deletePromises = orphans.map(key => deleteImage(env as unknown as S3Env, key));
 				
@@ -1602,7 +1602,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 		if (url.pathname === '/api/admin/audit-logs' && method === 'GET') {
 			try {
 				const userPayload = await authenticate(request);
-				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Unauthorized' }, 403);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 
 				const limit = parseInt(url.searchParams.get('limit') || '50');
 				const offset = parseInt(url.searchParams.get('offset') || '0');
@@ -1719,36 +1719,37 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				// Turnstile Check
 				const ip = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
 				if (!(await checkTurnstile(body, ip))) {
-					return jsonResponse({ error: 'Turnstile verification failed' }, 403);
+					return jsonResponse({ error: 'Weryfikacja CAPTCHA nie powiodła się' }, 403);
 				}
 
 				const { email, username, password } = body;
 				if (!email || !username || !password) {
-					return jsonResponse({ error: 'Missing email, username or password' }, 400);
+					return jsonResponse({ error: 'Wypełnij wszystkie pola (e-mail, nazwa, hasło)' }, 400);
 				}
 
-				if (email.length > 50) return jsonResponse({ error: 'Email too long (Max 50 chars)' }, 400);
+				if (email.length > 50) return jsonResponse({ error: 'E-mail max 50 znaków' }, 400);
 
-				if (username.length > 20) return jsonResponse({ error: 'Username too long (Max 20 chars)' }, 400);
-				if (isVisuallyEmpty(username)) return jsonResponse({ error: 'Username cannot be empty' }, 400);
-				if (hasInvisibleCharacters(username)) return jsonResponse({ error: 'Username contains invalid invisible characters' }, 400);
-				if (hasControlCharacters(username)) return jsonResponse({ error: 'Username contains invalid control characters' }, 400);
-				if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Username contains restricted keywords' }, 400);
+				if (username.length > 20) return jsonResponse({ error: 'Nazwa użytkownika max 20 znaków' }, 400);
+				if (isVisuallyEmpty(username)) return jsonResponse({ error: 'Nazwa użytkownika nie może być pusta' }, 400);
+				if (hasInvisibleCharacters(username)) return jsonResponse({ error: 'Nazwa zawiera niedozwolone niewidoczne znaki' }, 400);
+				if (hasControlCharacters(username)) return jsonResponse({ error: 'Nazwa zawiera niedozwolone znaki sterujące' }, 400);
+				if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Nazwa zawiera zastrzeżone słowa kluczowe' }, 400);
 
-				if (password.length < 8 || password.length > 16) return jsonResponse({ error: 'Password must be 8-16 characters' }, 400);
+				if (password.length < 8 || password.length > 16) return jsonResponse({ error: 'Hasło musi mieć 8–16 znaków' }, 400);
 
 				// Check Uniqueness (Combined Query for Performance)
 				const existing = await env.jimbo77_community_db.prepare('SELECT email, username FROM users WHERE email = ? OR username = ?').bind(email, username).first();
 				if (existing) {
-					if (existing.email === email) return jsonResponse({ error: 'Email already exists' }, 409);
-					return jsonResponse({ error: 'Username already taken' }, 409);
+					if (existing.email === email) return jsonResponse({ error: 'Ten e-mail jest już zarejestrowany' }, 409);
+					return jsonResponse({ error: 'Ta nazwa użytkownika jest już zajęta' }, 409);
 				}
 
 				const passwordHash = await hashPassword(password);
 				const verificationToken = generateToken();
 
-				// Pre-check email deliverability (Send a test email first)
-				// Note: We don't insert user yet. If email fails, we abort.
+				// Try to send verification email; if SMTP fails → auto-verify
+				let emailSent = false;
+				let autoVerified = false;
 				const baseUrl = getBaseUrl();
 				const verifyLink = `${baseUrl}/api/verify?token=${verificationToken}`;
 				
@@ -1761,38 +1762,40 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 
 				try {
 					await sendEmail(email, 'Zweryfikuj swój adres e-mail', emailHtml, env);
+					emailSent = true;
 				} catch (e) {
-					console.error('[Registration Email Error]', e);
-					const errorMsg = e instanceof Error ? e.message : 'Nieznany błąd';
-					return jsonResponse({ 
-						error: `Nie udało się wysłać e-maila weryfikacyjnego: ${errorMsg}`,
-						details: 'Sprawdź adres e-mail lub skontaktuj się z administratorem w sprawie konfiguracji SMTP'
-					}, 400);
+					console.warn('[Registration] Email send failed, auto-verifying user:', e instanceof Error ? e.message : e);
+					autoVerified = true;
 				}
 
+				// If email was sent → verified=0 (wait for click). If email failed → verified=1 (auto-activate)
+				const verifiedFlag = autoVerified ? 1 : 0;
+				const tokenOrNull = autoVerified ? null : verificationToken;
+
 				const { success, meta } = await env.jimbo77_community_db.prepare(
-					'INSERT INTO users (email, username, password, role, verified, verification_token) VALUES (?, ?, ?, "user", 0, ?)'
-				).bind(email, username, passwordHash, verificationToken).run();
+					'INSERT INTO users (email, username, password, role, verified, verification_token) VALUES (?, ?, ?, "user", ?, ?)'
+				).bind(email, username, passwordHash, verifiedFlag, tokenOrNull).run();
 
 				if (success) {
 					// Generate Default Avatar (Identicon)
-					// Use ID if available, otherwise fallback to Username
 					const userId = meta?.last_row_id;
 					if (userId) {
 						const identicon = await generateIdenticon(String(userId));
 						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').bind(identicon, userId).run();
 					} else {
-						// Fallback if ID retrieval fails (rare in D1)
 						const identicon = await generateIdenticon(username);
-						// We don't have ID easily without query, but we can update by username or just skip
 						await env.jimbo77_community_db.prepare('UPDATE users SET avatar_url = ? WHERE username = ?').bind(identicon, username).run();
 					}
 				}
 
-				return jsonResponse({ success, message: 'Rejestracja udana — sprawdź e-mail, aby dokończyć weryfikację.' }, 201);
+				const message = autoVerified
+					? 'Rejestracja udana — konto aktywne, możesz się zalogować!'
+					: 'Rejestracja udana — sprawdź e-mail, aby dokończyć weryfikację.';
+
+				return jsonResponse({ success, message, auto_verified: autoVerified }, 201);
 			} catch (e: any) {
 				if (e.message && e.message.includes('UNIQUE constraint failed')) {
-					return jsonResponse({ error: 'Email already exists' }, 409);
+					return jsonResponse({ error: 'Ten e-mail jest już zarejestrowany' }, 409);
 				}
 				return handleError(e);
 			}
@@ -1949,7 +1952,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
                      WHERE posts.id = ?`
 				).bind(postId).first();
 				
-				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
+				if (!post) return jsonResponse({ error: 'Post nie znaleziony' }, 404);
 
 				try {
 					await env.jimbo77_community_db.prepare('UPDATE posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ?').bind(postId).run();
@@ -1978,20 +1981,20 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				const { title, content, category_id } = body; // user_id not needed from body
 
 				if (!title || !content) {
-					return jsonResponse({ error: 'Missing parameters' }, 400);
+					return jsonResponse({ error: 'Podaj tytuł i treść posta' }, 400);
 				}
 
-				if (isVisuallyEmpty(title) || isVisuallyEmpty(content)) return jsonResponse({ error: 'Title or content cannot be empty' }, 400);
+				if (isVisuallyEmpty(title) || isVisuallyEmpty(content)) return jsonResponse({ error: 'Tytuł lub treść nie mogą być puste' }, 400);
 
 				if (hasInvisibleCharacters(title) || hasInvisibleCharacters(content)) return jsonResponse({ error: 'Title or content contains invalid invisible characters' }, 400);
 
 				// Check ownership or admin
 				const post = await env.jimbo77_community_db.prepare('SELECT author_id FROM posts WHERE id = ?').bind(postId).first();
-				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
+				if (!post) return jsonResponse({ error: 'Post nie znaleziony' }, 404);
 
 				// Use userPayload for RBAC
 				if (post.author_id !== userPayload.id && userPayload.role !== 'admin') {
-					return jsonResponse({ error: 'Unauthorized' }, 403);
+					return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 				}
 
 				// Validate Lengths
@@ -2025,10 +2028,10 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				
 				// Check ownership
 				const post = await env.jimbo77_community_db.prepare('SELECT author_id, content FROM posts WHERE id = ?').bind(id).first();
-				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
+				if (!post) return jsonResponse({ error: 'Post nie znaleziony' }, 404);
 				
 				if (post.author_id !== userPayload.id) {
-					return jsonResponse({ error: 'Unauthorized' }, 403);
+					return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 				}
 
 				// Delete images in post
@@ -2073,7 +2076,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				const body = await request.json() as any;
 				let { content, parent_id } = body;
 
-				if (!content) return jsonResponse({ error: 'Missing content' }, 400);
+				if (!content) return jsonResponse({ error: 'Podaj treść komentarza' }, 400);
 				if (isVisuallyEmpty(content)) return jsonResponse({ error: 'Comment cannot be empty' }, 400);
 				if (hasInvisibleCharacters(content)) return jsonResponse({ error: 'Comment contains invalid invisible characters' }, 400);
 				if (hasControlCharacters(content)) return jsonResponse({ error: 'Comment contains invalid control characters' }, 400);
@@ -2081,7 +2084,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 
 				// Verify post exists
 				const post = await env.jimbo77_community_db.prepare('SELECT id, title, author_id FROM posts WHERE id = ?').bind(postId).first();
-				if (!post) return jsonResponse({ error: 'Post not found' }, 404);
+				if (!post) return jsonResponse({ error: 'Post nie znaleziony' }, 404);
 
 				// Verify parent comment exists (if replying)
 				if (parent_id) {
@@ -2141,11 +2144,11 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				// Fetch comment to check ownership
 				const comment = await env.jimbo77_community_db.prepare('SELECT author_id FROM comments WHERE id = ?').bind(id).first();
 				
-				if (!comment) return jsonResponse({ error: 'Comment not found' }, 404);
+				if (!comment) return jsonResponse({ error: 'Komentarz nie znaleziony' }, 404);
 
 				// Allow deletion if user is author OR admin
 				if (comment.author_id !== userPayload.id && userPayload.role !== 'admin') {
-					return jsonResponse({ error: 'Unauthorized' }, 403);
+					return jsonResponse({ error: 'Brak autoryzacji' }, 403);
 				}
 
 				// Delete the comment AND its children (orphans prevention)
@@ -2214,7 +2217,7 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				let content = rawContent;
 				
 				if (!title || !content) {
-					return jsonResponse({ error: 'Missing title or content' }, 400);
+					return jsonResponse({ error: 'Podaj tytuł i treść' }, 400);
 				}
 				
 				// --- Input Sanitization & Validation (Sync with Frontend) ---
