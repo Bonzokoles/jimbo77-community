@@ -194,6 +194,7 @@ export default {
 			'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS, DELETE, PUT',
 			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Timestamp, X-Nonce',
 			'Access-Control-Allow-Credentials': 'true',
+			'Vary': 'Origin',
 		};
 
 		// Handle OPTIONS (CORS preflight)
