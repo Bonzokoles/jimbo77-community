@@ -184,11 +184,13 @@ export default {
 		};
 
 		// CORS headers helper
-		// CORS — dynamiczny origin (env.ALLOWED_ORIGIN) lub fallback na request origin
-		const requestOrigin = request.headers.get('Origin') || '*';
-		const allowedOrigin = (env as any).ALLOWED_ORIGIN || requestOrigin;
+		// CORS — dynamiczny origin z env.ALLOWED_ORIGIN (może być lista oddzielona przecinkami)
+		const requestOrigin = request.headers.get('Origin') || '';
+		const allowedOrigins = ((env as any).ALLOWED_ORIGIN || '').split(',').map((o: string) => o.trim());
+		const originAllowed = allowedOrigins.includes(requestOrigin) || allowedOrigins.includes('*');
+		const corsOrigin = originAllowed ? requestOrigin : (allowedOrigins[0] || '*');
 		const corsHeaders = {
-			'Access-Control-Allow-Origin': allowedOrigin,
+			'Access-Control-Allow-Origin': corsOrigin,
 			'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS, DELETE, PUT',
 			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Timestamp, X-Nonce',
 			'Access-Control-Allow-Credentials': 'true',
@@ -390,7 +392,7 @@ export default {
             '/api/config', '/api/login', '/api/register', '/api/verify', 
             '/api/auth/forgot-password', '/api/auth/reset-password', '/api/verify-email-change',
              // Static/Public GETs
-            '/api/posts', '/api/categories'
+            '/api/posts', '/api/categories', '/api/stats'
         ];
         
         // Relax check for public GETs that don't need nonce
@@ -1082,6 +1084,30 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 			try {
 				const { results } = await env.jimbo77_community_db.prepare('SELECT * FROM categories ORDER BY created_at ASC').all();
 				return jsonResponse(results);
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// GET /api/stats — public stats for blog sidebar widget
+		if (url.pathname === '/api/stats' && method === 'GET') {
+			try {
+				const [usersRow, postsRow, commentsRow, recentPosts] = await Promise.all([
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM users WHERE verified = 1').first(),
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM posts').first(),
+					env.jimbo77_community_db.prepare('SELECT COUNT(*) as count FROM comments').first(),
+					env.jimbo77_community_db.prepare(
+						`SELECT p.id, p.title, p.created_at, u.username as author_name
+						 FROM posts p JOIN users u ON p.author_id = u.id
+						 ORDER BY p.created_at DESC LIMIT 3`
+					).all(),
+				]);
+				return jsonResponse({
+					users: (usersRow as any)?.count ?? 0,
+					posts: (postsRow as any)?.count ?? 0,
+					comments: (commentsRow as any)?.count ?? 0,
+					recent: (recentPosts as any)?.results ?? [],
+				});
 			} catch (e) {
 				return handleError(e);
 			}
