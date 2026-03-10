@@ -21,6 +21,15 @@ interface DBUser {
     pending_email?: string;
     verification_token?: string;
     email_change_token?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
+    github_url?: string;
+    twitter_url?: string;
+    linkedin_url?: string;
+    skills?: string;
+    dashboard_sections?: string;
+    created_at?: string;
 }
 
 interface PostAuthorInfo {
@@ -632,7 +641,7 @@ export default {
 			try {
 				const userPayload = await authenticate(request);
 				const body = await request.json() as any;
-				const { username, avatar_url, email_notifications } = body;
+				const { username, avatar_url, email_notifications, bio, location, website, github_url, twitter_url, linkedin_url, skills, dashboard_sections } = body;
 				
 				const user_id = userPayload.id;
 
@@ -643,45 +652,50 @@ export default {
 					if (hasControlCharacters(username)) return jsonResponse({ error: 'Nazwa zawiera niedozwolone znaki sterujące' }, 400);
 					if (hasRestrictedKeywords(username)) return jsonResponse({ error: 'Nazwa zawiera zastrzeżone słowa kluczowe' }, 400);
 					
-					// Check Uniqueness
 					const existingUser = await env.jimbo77_community_db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').bind(username, user_id).first<{id:number}>();
 					if (existingUser) {
 						return jsonResponse({ error: 'Ta nazwa użytkownika jest już zajęta' }, 409);
 					}
 				}
 
-				// Fetch current user
 				const currentUser = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-			if (!currentUser) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				if (!currentUser) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 
 				let newUsername = currentUser.username;
-				if (username !== undefined) {
-					newUsername = username;
-				}
+				if (username !== undefined) newUsername = username;
 
 				let newAvatarUrl = currentUser.avatar_url;
 				if (avatar_url !== undefined) {
 					if (avatar_url === '' || avatar_url === null) {
-						// Generate Identicon
 						newAvatarUrl = await generateIdenticon(String(user_id));
 					} else {
-						if (avatar_url.length > 500) return jsonResponse({ error: 'Avatar URL too long (Max 500 chars)' }, 400);
+						if (avatar_url.length > 500) return jsonResponse({ error: 'Avatar URL za długi (max 500 znaków)' }, 400);
 						if (!/^https?:\/\//i.test(avatar_url) && !avatar_url.startsWith('data:image/svg+xml')) return jsonResponse({ error: 'Nieprawidłowy URL avatara (musi zaczynać się od http:// lub https://)' }, 400);
 						newAvatarUrl = avatar_url;
 					}
 				}
 
 				let newEmailNotif = currentUser.email_notifications;
-				if (email_notifications !== undefined) {
-					newEmailNotif = email_notifications ? 1 : 0;
-				}
+				if (email_notifications !== undefined) newEmailNotif = email_notifications ? 1 : 0;
 
-				await env.jimbo77_community_db.prepare('UPDATE users SET username = ?, avatar_url = ?, email_notifications = ? WHERE id = ?')
-					.bind(newUsername, newAvatarUrl, newEmailNotif, user_id).run();
+				// Dashboard profile fields
+				const newBio = bio !== undefined ? String(bio).slice(0, 500) : (currentUser.bio || '');
+				const newLocation = location !== undefined ? String(location).slice(0, 100) : (currentUser.location || '');
+				const newWebsite = website !== undefined ? String(website).slice(0, 200) : (currentUser.website || '');
+				const newGithub = github_url !== undefined ? String(github_url).slice(0, 200) : (currentUser.github_url || '');
+				const newTwitter = twitter_url !== undefined ? String(twitter_url).slice(0, 200) : (currentUser.twitter_url || '');
+				const newLinkedin = linkedin_url !== undefined ? String(linkedin_url).slice(0, 200) : (currentUser.linkedin_url || '');
+				const newSkills = skills !== undefined ? String(skills).slice(0, 500) : (currentUser.skills || '');
+				const newDashboard = dashboard_sections !== undefined ? String(dashboard_sections).slice(0, 10000) : (currentUser.dashboard_sections || '[]');
 
-			const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
-			if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
+				await env.jimbo77_community_db.prepare(
+					`UPDATE users SET username = ?, avatar_url = ?, email_notifications = ?,
+					 bio = ?, location = ?, website = ?, github_url = ?, twitter_url = ?,
+					 linkedin_url = ?, skills = ?, dashboard_sections = ? WHERE id = ?`
+				).bind(newUsername, newAvatarUrl, newEmailNotif, newBio, newLocation, newWebsite, newGithub, newTwitter, newLinkedin, newSkills, newDashboard, user_id).run();
+
+				const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE id = ?').bind(user_id).first<DBUser>();
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
 				return jsonResponse({
 					success: true,
 					user: {
@@ -691,8 +705,69 @@ export default {
 						avatar_url: user.avatar_url,
 						role: user.role || 'user',
 						totp_enabled: !!user.totp_enabled,
-						email_notifications: user.email_notifications === 1
+						email_notifications: user.email_notifications === 1,
+						bio: user.bio || '',
+						location: user.location || '',
+						website: user.website || '',
+						github_url: user.github_url || '',
+						twitter_url: user.twitter_url || '',
+						linkedin_url: user.linkedin_url || '',
+						skills: user.skills || '',
+						dashboard_sections: user.dashboard_sections || '[]'
 					}
+				});
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// GET /api/users/:username/dashboard — public user dashboard/profile
+		const dashboardMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/dashboard$/);
+		if (dashboardMatch && method === 'GET') {
+			try {
+				const targetUsername = decodeURIComponent(dashboardMatch[1]);
+				const user = await env.jimbo77_community_db.prepare(
+					`SELECT id, username, avatar_url, role, bio, location, website,
+					 github_url, twitter_url, linkedin_url, skills, dashboard_sections, created_at
+					 FROM users WHERE username = ?`
+				).bind(targetUsername).first<DBUser>();
+				if (!user) return jsonResponse({ error: 'Użytkownik nie znaleziony' }, 404);
+
+				// Fetch user stats
+				const postCount = await env.jimbo77_community_db.prepare('SELECT COUNT(*) as cnt FROM posts WHERE author_id = ?').bind(user.id).first<{cnt:number}>();
+				const commentCount = await env.jimbo77_community_db.prepare('SELECT COUNT(*) as cnt FROM comments WHERE author_id = ?').bind(user.id).first<{cnt:number}>();
+				const likeCount = await env.jimbo77_community_db.prepare(
+					'SELECT COUNT(*) as cnt FROM likes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)'
+				).bind(user.id).first<{cnt:number}>();
+
+				// Recent posts
+				const recentPosts = await env.jimbo77_community_db.prepare(
+					`SELECT p.id, p.title, p.created_at, p.view_count,
+					 (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+					 (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
+					 FROM posts p WHERE p.author_id = ? ORDER BY p.created_at DESC LIMIT 5`
+				).bind(user.id).all();
+
+				return jsonResponse({
+					id: user.id,
+					username: user.username,
+					avatar_url: user.avatar_url || '',
+					role: user.role || 'user',
+					bio: user.bio || '',
+					location: user.location || '',
+					website: user.website || '',
+					github_url: user.github_url || '',
+					twitter_url: user.twitter_url || '',
+					linkedin_url: user.linkedin_url || '',
+					skills: user.skills || '',
+					dashboard_sections: user.dashboard_sections || '[]',
+					created_at: user.created_at || '',
+					stats: {
+						posts: postCount?.cnt || 0,
+						comments: commentCount?.cnt || 0,
+						likes_received: likeCount?.cnt || 0,
+					},
+					recent_posts: recentPosts?.results || [],
 				});
 			} catch (e) {
 				return handleError(e);
