@@ -100,4 +100,4 @@ POST   /api/upload              Upload obrazka (auth)
 
 ## Licencja
 
-Oparty na [CForum](https://github.com/nicolecomputer/cforum) (MIT). Ten fork udostępniany na licencji **MIT**.
+Projekt udostępniany na otwartej licencji **MIT**.
