@@ -6,13 +6,13 @@ declare namespace Cloudflare {
 		mainModule: typeof import("./src/index");
 	}
 	interface ProductionEnv {
-		WORKER_URL: "https://cforum.adysec.workers.dev";
+		WORKER_URL: "https://jimbo77-community.stolarnia-ams.workers.dev";
 	}
 	interface DevelopmentEnv {
 		WORKER_URL: "http://localhost:8787";
 	}
 	interface Env {
-		WORKER_URL?: "https://cforum.adysec.workers.dev" | "http://localhost:8787";
+		WORKER_URL?: "https://jimbo77-community.adysec.workers.dev" | "http://localhost:8787";
 		BUCKET?: R2Bucket;
 		jimbo77_community_db?: D1Database;
 	}

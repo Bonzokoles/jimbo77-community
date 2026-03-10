@@ -15,9 +15,7 @@
 		{
 			"binding": "jimbo77_community_db",
 			"database_name": "jimbo77-community-db",
-			"database_id": "851270eb-80b8-4e31-825e-645d444898d6",
-			"remote": true,
-			"migrations_dir": "migrations",
+			"database_id": "1d62bbdf-631f-4423-bacf-00b0ee330ced",
 		},
 	],
 	/**
@@ -82,7 +80,7 @@
 	"env": {
 		"production": {
 			"vars": {
-				"WORKER_URL": "https://jimbo77-community.adysec.workers.dev",
+				"WORKER_URL": "https://jimbo77-community.stolarnia-ams.workers.dev",
 			},
 		},
 		"development": {

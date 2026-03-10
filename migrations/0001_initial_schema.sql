@@ -6,19 +6,20 @@ DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS nonces;
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS categories;
-
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   username TEXT NOT NULL,
   password TEXT NOT NULL,
-  role TEXT DEFAULT 'user', -- 'user' or 'admin'
+  role TEXT DEFAULT 'user',
+  -- 'user' or 'admin'
   verified INTEGER DEFAULT 0,
   verification_token TEXT,
   totp_secret TEXT,
   totp_enabled INTEGER DEFAULT 0,
   reset_token TEXT,
-  reset_token_expires INTEGER, -- Timestamp
+  reset_token_expires INTEGER,
+  -- Timestamp
   pending_email TEXT,
   email_change_token TEXT,
   avatar_url TEXT,
@@ -26,13 +27,11 @@ CREATE TABLE users (
   email_notifications INTEGER DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   author_id INTEGER NOT NULL,
@@ -45,7 +44,6 @@ CREATE TABLE posts (
   FOREIGN KEY (author_id) REFERENCES users(id),
   FOREIGN KEY (category_id) REFERENCES categories(id)
 );
-
 CREATE TABLE comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   post_id INTEGER NOT NULL,
@@ -57,7 +55,6 @@ CREATE TABLE comments (
   FOREIGN KEY (parent_id) REFERENCES comments(id),
   FOREIGN KEY (author_id) REFERENCES users(id)
 );
-
 CREATE TABLE likes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   post_id INTEGER NOT NULL,
@@ -67,17 +64,11 @@ CREATE TABLE likes (
   FOREIGN KEY (post_id) REFERENCES posts(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
-
-CREATE TABLE settings (
-  key TEXT PRIMARY KEY,
-  value TEXT
-);
-
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE nonces (
   nonce TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL
 );
-
 CREATE TABLE sessions (
   jti TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -85,7 +76,6 @@ CREATE TABLE sessions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
-
 CREATE TABLE audit_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER,
@@ -96,18 +86,58 @@ CREATE TABLE audit_logs (
   ip_address TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-INSERT INTO settings (key, value) VALUES ('turnstile_enabled', '0');
-
+INSERT INTO settings (key, value)
+VALUES ('turnstile_enabled', '0');
 -- Insert some dummy data
 -- Admin user (admin@adysec.com / Admin@123)
 -- Hash for 'Admin@123': ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f
-INSERT INTO users (email, username, password, role, verified, nickname) VALUES 
-('admin@adysec.com', 'Admin', 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', 'admin', 1, 'System Admin'),
-('alice@example.com', 'Alice', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'user', 1, 'Alice Wonderland'),
-('bob@example.com', 'Bob', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'user', 0, NULL);
-
-INSERT INTO categories (name) VALUES ('General'), ('Tech'), ('Random');
-
-INSERT INTO posts (author_id, title, content, category_id) VALUES (1, 'Welcome to CForum', 'This is an official announcement from the admin.', 1);
-INSERT INTO posts (author_id, title, content, category_id) VALUES (2, 'Hello World', 'This is the first post by Alice!', 2);
+INSERT INTO users (
+    email,
+    username,
+    password,
+    role,
+    verified,
+    nickname
+  )
+VALUES (
+    'admin@adysec.com',
+    'Admin',
+    'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7',
+    'admin',
+    1,
+    'System Admin'
+  ),
+  (
+    'alice@example.com',
+    'Alice',
+    'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f',
+    'user',
+    1,
+    'Alice Wonderland'
+  ),
+  (
+    'bob@example.com',
+    'Bob',
+    'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f',
+    'user',
+    0,
+    NULL
+  );
+INSERT INTO categories (name)
+VALUES ('General'),
+  ('Tech'),
+  ('Random');
+INSERT INTO posts (author_id, title, content, category_id)
+VALUES (
+    1,
+    'Welcome to Jimbo77 Community',
+    'This is an official announcement from the admin.',
+    1
+  );
+INSERT INTO posts (author_id, title, content, category_id)
+VALUES (
+    2,
+    'Hello World',
+    'This is the first post by Alice!',
+    2
+  );

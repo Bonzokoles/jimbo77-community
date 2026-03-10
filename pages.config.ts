@@ -1,31 +1,31 @@
 /**
- * Cloudflare Pages 部署配置
- * 支持本地开发和部署
+ * Cloudflare Pages — konfiguracja deployu
+ * Lokalne dev + deployment
  * 
- * 使用说明：
- * - 本地开发: npm run dev:pages
- * - 部署 Pages: wrangler pages deploy
+ * Użycie:
+ * - Lokalne dev: npm run dev:pages
+ * - Deploy Pages: wrangler pages deploy
  */
 
 export default {
-	// Pages 项目配置
-	projectName: 'cforum',
+	// Projekt Pages
+	projectName: 'jimbo77-community',
 	
-	// 构建配置
+	// Build
 	build: {
 		command: 'npm run build:frontend',
 		outputDir: 'public'
 	},
 	
-	// 开发配置
+	// Dev
 	dev: {
 		port: 3010,
 		local: true
 	},
 	
-	// 路由配置
+	// Routing
 	routing: {
-		// API 路由转发到 Functions
+		// API → proxy do Functions/Worker
 		'/api/*': 'functions/[[path]]',
 		'/r2/*': 'functions/[[path]]',
 		'/user': 'functions/[[path]]',
@@ -34,7 +34,7 @@ export default {
 		'/admin': 'functions/[[path]]',
 		'/settings': 'functions/[[path]]',
 		
-		// 静态资源从 public 返回
+		// Statyczne pliki z public/
 		'*': 'public/*'
 	}
 };
