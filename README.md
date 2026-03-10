@@ -1,187 +1,103 @@
-# Jimbo77 Community Forum
+# Jimbo77 Community
 
-Jimbo77 Community Forum to forum społeczności **Jimbo77.org**, zbudowane na Cloudflare Workers, D1, R2 oraz React 19.
+> Forum społeczności **[jimbo77.org](https://jimbo77.org)** — zbudowane na Cloudflare Workers + D1 + R2.
+
+[![Deploy](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+---
 
 ## Funkcje
 
-- Posty: tworzenie, edycja, usuwanie, przypinanie, kategorie
-- Komentarze: wątki z odpowiedziami, podstawowa moderacja
-- Użytkownicy: rejestracja, logowanie, weryfikacja e‑mail, 2FA (TOTP)
-- Upload obrazków: wysyłka do R2 z podglądem w Markdown
-- Profil: avatar, opis, ustawienia powiadomień
-- Panel admina: użytkownicy, kategorie, konfiguracja systemu
-- Statystyki: licznik wyświetleń posta, polubienia
-- Ochrona: Cloudflare Turnstile, JWT, sesje, audit logi
+| Moduł | Opis |
+|-------|------|
+| **Forum** | Posty, komentarze, wątki, przypinanie, kategorie, polubienia |
+| **Użytkownicy** | Rejestracja, logowanie, weryfikacja e-mail, 2FA (TOTP) |
+| **Upload** | Obrazki wysyłane do R2 z podglądem Markdown |
+| **Profil** | Avatar, opis, ustawienia powiadomień |
+| **Admin** | Panel zarządzania użytkownikami, kategoriami, konfiguracją |
+| **Bezpieczeństwo** | PBKDF2 hashing, JWT, rate limiting, CORS lock, audit logi, Turnstile |
+| **AI (wkrótce)** | Chat AI, generowanie grafiki — dostępne po rejestracji |
 
 ## Stos technologiczny
 
 - **Backend:** Cloudflare Workers (TypeScript)
 - **Baza danych:** Cloudflare D1 (SQLite)
-- **Storage:** Cloudflare R2 (obrazy postów i avatary)
+- **Storage:** Cloudflare R2 (obrazy, avatary)
 - **Frontend:** React 19 + Vite + TailwindCSS
-- **Infra:** Cloudflare Pages + hybrydowy routing (Pages + Worker)
+- **Infrastruktura:** Cloudflare Pages + Worker routing
 
-## Uruchomienie lokalne
+## Szybki start
 
-1. Zainstaluj zależności:
+```bash
+# 1. Zainstaluj zależności
+npm install
 
-   ```bash
-   npm install
-Zbuduj frontend:
-
-bash
+# 2. Zbuduj frontend
 npm run build:frontend
-Uruchom Workers lokalnie:
 
-bash
+# 3. Uruchom lokalnie
 npm run dev
-Aplikacja będzie dostępna pod adresem:
+```
 
-Worker: http://localhost:8787
+| Serwis | Adres |
+|--------|-------|
+| Worker API | `http://localhost:8787` |
+| Frontend (Pages dev) | `http://localhost:8788` |
 
-Frontend (Pages dev): http://localhost:8788 (przy użyciu npm run dev:pages)
+## Konfiguracja (Cloudflare Secrets)
 
-Zmienne środowiskowe (sekrety Workers)
-W Cloudflare Dashboard / przez wrangler secret skonfiguruj:
+Ustaw przez `wrangler secret put <NAZWA>` lub w Cloudflare Dashboard:
 
-JWT_SECRET – losowy, silny sekret do podpisywania tokenów
+| Sekret | Opis |
+|--------|------|
+| `JWT_SECRET` | Losowy sekret ≥32 znaki do podpisywania tokenów |
+| `ALLOWED_ORIGIN` | Dozwolony origin dla CORS, np. `https://jimbo77.org` |
+| `SMTP_HOST` | Host serwera SMTP |
+| `SMTP_PORT` | Port SMTP (587 / 465) |
+| `SMTP_USER` | Login SMTP |
+| `SMTP_PASS` | Hasło SMTP |
+| `SMTP_FROM` | Adres nadawcy, np. `no-reply@jimbo77.org` |
+| `SMTP_FROM_NAME` | Nazwa nadawcy, np. `Jimbo77 Community` |
+| `TURNSTILE_SITE_KEY` | Klucz publiczny Cloudflare Turnstile |
+| `TURNSTILE_SECRET_KEY` | Klucz prywatny Cloudflare Turnstile |
+| `RESEND_KEY` | *(opcjonalnie)* API key Resend jako fallback email |
 
-BASE_URL – publiczny adres forum, np. https://community.jimbo77.org
+## Struktura projektu
 
-SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS – dane SMTP
+```
+src/
+├── index.ts        # Główny handler API (~2000 linii)
+├── security.ts     # JWT, nonce, audit logging
+└── smtp.ts         # SMTP + Resend email sending
+schema.sql          # Schemat bazy D1
+wrangler.jsonc      # Konfiguracja Workers
+```
 
-SMTP_FROM – adres nadawcy, np. no-reply@jimbo77.org
+## Bezpieczeństwo
 
-SMTP_FROM_NAME – nazwa nadawcy, np. Jimbo77 Community
+- **Hasła:** PBKDF2 (100k iteracji, 16B random salt) z auto-migracją legacy SHA-256
+- **Rate limiting:** 10 req / 60s per IP na endpointach auth
+- **CORS:** Dynamiczny origin z `ALLOWED_ORIGIN` (nie wildcard)
+- **JWT:** Tokeny z krótkim TTL, blacklist przez sesje w D1
+- **Nonce:** Ochrona przed replay attacks na POST/PUT/DELETE
+- **Audit:** Logi operacji w tabeli `audit_logs`
 
-TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY – klucze Cloudflare Turnstile
+## API
 
-Domyślny administrator
-Po wykonaniu migracji i inicjalizacji bazy tworzone jest konto administratora:
+```
+POST   /api/auth/register       Rejestracja
+POST   /api/auth/login          Logowanie
+POST   /api/auth/forgot-password Reset hasła
+GET    /api/posts               Lista postów
+POST   /api/posts               Nowy post (auth)
+GET    /api/posts/:id           Szczegóły posta
+POST   /api/posts/:id/comments  Komentarz (auth)
+POST   /api/posts/:id/like      Polubienie (auth)
+GET    /api/users               Lista użytkowników (auth)
+POST   /api/upload              Upload obrazka (auth)
+```
 
-E‑mail: karol.bonzo@yahoo.com
+## Licencja
 
-Hasło: Admin@123 (zalecana natychmiastowa zmiana po pierwszym logowaniu)
-
-Licencja
-Projekt oparty jest na kodzie CForum (MIT). Ten fork również udostępniany jest na licencji MIT.
-Szczegóły znajdziesz w pliku LICENSE w repozytorium źródłowym CForum.
-
-text
-
-***
-
-### schema.sql
-```sql
-DROP TABLE IF EXISTS comments;
-DROP TABLE IF EXISTS likes;
-DROP TABLE IF EXISTS posts;
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS settings;
-DROP TABLE IF EXISTS nonces;
-DROP TABLE IF EXISTS audit_logs;
-DROP TABLE IF EXISTS categories;
-
-CREATE TABLE users (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-email TEXT NOT NULL UNIQUE,
-username TEXT NOT NULL,
-password TEXT NOT NULL,
-role TEXT DEFAULT 'user', -- 'user' or 'admin'
-verified INTEGER DEFAULT 0,
-verification_token TEXT,
-totp_secret TEXT,
-totp_enabled INTEGER DEFAULT 0,
-reset_token TEXT,
-reset_token_expires INTEGER, -- Timestamp
-pending_email TEXT,
-email_change_token TEXT,
-avatar_url TEXT,
-nickname TEXT,
-email_notifications INTEGER DEFAULT 1,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE categories (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-name TEXT NOT NULL UNIQUE,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE posts (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-author_id INTEGER NOT NULL,
-title TEXT NOT NULL,
-content TEXT NOT NULL,
-category_id INTEGER,
-is_pinned INTEGER DEFAULT 0,
-view_count INTEGER NOT NULL DEFAULT 0,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (author_id) REFERENCES users(id),
-FOREIGN KEY (category_id) REFERENCES categories(id)
-);
-
-CREATE TABLE comments (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-post_id INTEGER NOT NULL,
-parent_id INTEGER,
-author_id INTEGER NOT NULL,
-content TEXT NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (post_id) REFERENCES posts(id),
-FOREIGN KEY (parent_id) REFERENCES comments(id),
-FOREIGN KEY (author_id) REFERENCES users(id)
-);
-
-CREATE TABLE likes (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-post_id INTEGER NOT NULL,
-user_id INTEGER NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-UNIQUE(post_id, user_id),
-FOREIGN KEY (post_id) REFERENCES posts(id),
-FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE settings (
-key TEXT PRIMARY KEY,
-value TEXT
-);
-
-CREATE TABLE nonces (
-nonce TEXT PRIMARY KEY,
-expires_at INTEGER NOT NULL
-);
-
-CREATE TABLE sessions (
-jti TEXT PRIMARY KEY,
-user_id INTEGER NOT NULL,
-expires_at INTEGER NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE audit_logs (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user_id INTEGER,
-action TEXT NOT NULL,
-resource_type TEXT,
-resource_id TEXT,
-details TEXT,
-ip_address TEXT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO settings (key, value) VALUES ('turnstile_enabled', '0');
-
--- Insert some dummy data
--- Admin user (karol.bonzo@yahoo.com / Admin@123)
-INSERT INTO users (email, username, password, role, verified, nickname) VALUES
-('karol.bonzo@yahoo.com', 'Admin', 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', 'admin', 1, 'System Admin'),
-('alice@example.com', 'Alice', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'user', 1, 'Alice Wonderland'),
-('bob@example.com', 'Bob', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'user', 0, NULL);
-
-INSERT INTO categories (name) VALUES ('Ogólne'), ('Tech'), ('Random');
-
-INSERT INTO posts (author_id, title, content, category_id) VALUES (1, 'Welcome to Jimbo77 Community', 'This is an official announcement from the admin.', 1);
-INSERT INTO posts (author_id, title, content, category_id) VALUES (2, 'Hello World', 'This is the first post by Alice!', 2);
+Oparty na [CForum](https://github.com/nicolecomputer/cforum) (MIT). Ten fork udostępniany na licencji **MIT**.
