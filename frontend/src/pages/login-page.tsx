@@ -10,7 +10,7 @@ import { useConfig } from '@/hooks/use-config';
 
 export function LoginPage() {
 	const { config } = useConfig();
-	const [username, setUsername] = React.useState('');
+	const [email, setEmail] = React.useState('');
 	const [password, setPassword] = React.useState('');
 	const [totp, setTotp] = React.useState('');
 	const [error, setError] = React.useState('');
@@ -35,7 +35,7 @@ export function LoginPage() {
 				method: 'POST',
 				headers: getSecurityHeaders('POST'),
 				body: JSON.stringify({
-					username,
+					email,
 					password,
 					totp_code: totp || undefined,
 					'cf-turnstile-response': turnstileToken
@@ -64,8 +64,8 @@ export function LoginPage() {
 							<div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>
 						) : null}
 						<div className="space-y-2">
-							<Label htmlFor="username">Nazwa użytkownika</Label>
-							<Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" />
+						<Label htmlFor="email">E-mail</Label>
+						<Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
 						</div>
 						<div className="space-y-2">
 							<Label htmlFor="password">Hasło</Label>

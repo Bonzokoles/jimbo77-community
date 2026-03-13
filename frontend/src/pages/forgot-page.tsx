@@ -30,7 +30,7 @@ export function ForgotPage() {
 		}
 		setLoading(true);
 		try {
-			await apiFetch('/forgot-password', {
+			await apiFetch('/auth/forgot-password', {
 				method: 'POST',
 				headers: getSecurityHeaders('POST'),
 				body: JSON.stringify({

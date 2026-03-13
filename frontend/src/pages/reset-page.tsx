@@ -31,7 +31,7 @@ export function ResetPage() {
 		}
 		setLoading(true);
 		try {
-			await apiFetch('/reset-password', {
+			await apiFetch('/auth/reset-password', {
 				method: 'POST',
 				headers: getSecurityHeaders('POST'),
 				body: JSON.stringify({ token, password })

@@ -201,7 +201,7 @@ export default {
 		const corsHeaders = {
 			'Access-Control-Allow-Origin': corsOrigin,
 			'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS, DELETE, PUT',
-			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Timestamp, X-Nonce',
+			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Timestamp, X-Nonce, X-Panel-Secret',
 			'Access-Control-Allow-Credentials': 'true',
 			'Vary': 'Origin',
 		};
@@ -341,7 +341,16 @@ export default {
   ip_address TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );`,
-				`INSERT OR IGNORE INTO settings (key, value) VALUES ('turnstile_enabled', '0');`,
+				`CREATE TABLE IF NOT EXISTS user_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('yellow','red','note')),
+  message TEXT NOT NULL,
+  created_by TEXT DEFAULT 'admin',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);`,
+			`INSERT OR IGNORE INTO settings (key, value) VALUES ('turnstile_enabled', '0');`,
 				`INSERT OR IGNORE INTO users (email, username, password, role, verified, nickname) VALUES 
 ('admin@adysec.com', 'Admin', 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', 'admin', 1, 'System Admin');`
 			];
@@ -2336,6 +2345,221 @@ const user = await env.jimbo77_community_db.prepare('SELECT * FROM users WHERE e
 				await security.logAudit(userPayload.id, 'CREATE_POST', 'post', 'new', { title_length: safeTitle.length }, request);
 
 				return jsonResponse({ success }, 201);
+			} catch (e) {
+				return handleError(e);
+			}
+		}
+
+		// ═══════════════════════════════════════════════════════════
+		// MARKETPLACE / LISTINGS
+		// ═══════════════════════════════════════════════════════════
+
+		// GET /api/listings — public list of active listings
+		if (url.pathname === '/api/listings' && method === 'GET') {
+			try {
+				const type = url.searchParams.get('type'); // 'szukam' | 'oferuję' | null=all
+				let query = `SELECT l.*, u.username as author_name, u.avatar_url as author_avatar
+				             FROM listings l JOIN users u ON l.author_id = u.id
+				             WHERE l.is_active = 1`;
+				const binds: any[] = [];
+				if (type) { query += ' AND l.type = ?'; binds.push(type); }
+				query += ' ORDER BY l.created_at DESC LIMIT 20';
+				const result = await env.jimbo77_community_db.prepare(query).bind(...binds).all();
+				return jsonResponse(result.results || []);
+			} catch (e) { return handleError(e); }
+		}
+
+		// POST /api/listings — create listing (auth required)
+		if (url.pathname === '/api/listings' && method === 'POST') {
+			try {
+				const userPayload = await authenticate(request);
+				const body = await request.json() as any;
+				const { title, description, type, contact } = body;
+				if (!title || !description) return jsonResponse({ error: 'Tytuł i opis są wymagane' }, 400);
+				if (title.length > 80) return jsonResponse({ error: 'Tytuł max 80 znaków' }, 400);
+				if (description.length > 500) return jsonResponse({ error: 'Opis max 500 znaków' }, 400);
+				const validTypes = ['szukam', 'oferuję'];
+				const listingType = validTypes.includes(type) ? type : 'oferuję';
+				await env.jimbo77_community_db.prepare(
+					'INSERT INTO listings (author_id, title, description, type, contact) VALUES (?, ?, ?, ?, ?)'
+				).bind(userPayload.id, title.trim(), description.trim(), listingType, (contact || '').slice(0, 100)).run();
+				return jsonResponse({ success: true }, 201);
+			} catch (e) { return handleError(e); }
+		}
+
+		// DELETE /api/listings/:id — delete own listing (or admin)
+		const listingDeleteMatch = url.pathname.match(/^\/api\/listings\/(\d+)$/);
+		if (listingDeleteMatch && method === 'DELETE') {
+			try {
+				const userPayload = await authenticate(request);
+				const lid = parseInt(listingDeleteMatch[1]);
+				const listing = await env.jimbo77_community_db.prepare('SELECT * FROM listings WHERE id = ?').bind(lid).first<any>();
+				if (!listing) return jsonResponse({ error: 'Ogłoszenie nie znalezione' }, 404);
+				if (listing.author_id !== userPayload.id && userPayload.role !== 'admin') {
+					return jsonResponse({ error: 'Brak uprawnień' }, 403);
+				}
+				await env.jimbo77_community_db.prepare('DELETE FROM listings WHERE id = ?').bind(lid).run();
+				return jsonResponse({ success: true });
+			} catch (e) { return handleError(e); }
+		}
+
+		// ═══════════════════════════════════════════════════════════
+		// COMMUNITY NEWS / GAZETKA
+		// ═══════════════════════════════════════════════════════════
+
+		// GET /api/community-news — public list
+		if (url.pathname === '/api/community-news' && method === 'GET') {
+			try {
+				const type = url.searchParams.get('type'); // 'news' | 'rules' | 'video' | 'fact' | null=all
+				let query = `SELECT cn.*, u.username as author_name FROM community_news cn
+				             LEFT JOIN users u ON cn.author_id = u.id`;
+				const binds: any[] = [];
+				if (type) { query += ' WHERE cn.type = ?'; binds.push(type); }
+				query += ' ORDER BY cn.is_pinned DESC, cn.created_at DESC LIMIT 20';
+				const result = await env.jimbo77_community_db.prepare(query).bind(...binds).all();
+				return jsonResponse(result.results || []);
+			} catch (e) { return handleError(e); }
+		}
+
+		// POST /api/community-news — admin only: create news item
+		if (url.pathname === '/api/community-news' && method === 'POST') {
+			try {
+				const userPayload = await authenticate(request);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Tylko admin' }, 403);
+				const body = await request.json() as any;
+				const { title, content, type, url: newsUrl, is_pinned } = body;
+				if (!title || !content) return jsonResponse({ error: 'Tytuł i treść wymagane' }, 400);
+				const validTypes = ['news', 'rules', 'video', 'fact', 'update'];
+				const newsType = validTypes.includes(type) ? type : 'news';
+				await env.jimbo77_community_db.prepare(
+					'INSERT INTO community_news (author_id, title, content, type, url, is_pinned) VALUES (?, ?, ?, ?, ?, ?)'
+				).bind(userPayload.id, title.slice(0, 120), content.slice(0, 2000), newsType, (newsUrl || '').slice(0, 300), is_pinned ? 1 : 0).run();
+				return jsonResponse({ success: true }, 201);
+			} catch (e) { return handleError(e); }
+		}
+
+		// DELETE /api/community-news/:id — admin only
+		const newsDeleteMatch = url.pathname.match(/^\/api\/community-news\/(\d+)$/);
+		if (newsDeleteMatch && method === 'DELETE') {
+			try {
+				const userPayload = await authenticate(request);
+				if (userPayload.role !== 'admin') return jsonResponse({ error: 'Tylko admin' }, 403);
+				await env.jimbo77_community_db.prepare('DELETE FROM community_news WHERE id = ?').bind(parseInt(newsDeleteMatch[1])).run();
+				return jsonResponse({ success: true });
+			} catch (e) { return handleError(e); }
+		}
+
+		// Panel auth helper
+		const isPanelAuth = () => {
+			const s = request.headers.get('X-Panel-Secret') || '';
+			const expected = (env as any).PANEL_SECRET || '';
+			return expected && s === expected;
+		};
+
+		// GET /api/panel/users/:id/cards
+		const cardsMatch = url.pathname.match(/^\/api\/panel\/users\/(\d+)\/cards$/);
+		if (cardsMatch) {
+			if (!isPanelAuth()) return jsonResponse({ error: 'Brak autoryzacji' }, 401);
+			const db = env.jimbo77_community_db;
+			if (!db) return jsonResponse({ error: 'DB' }, 500);
+			if (method === 'GET') {
+				try {
+					const { results } = await db.prepare('SELECT * FROM user_cards WHERE user_id = ? ORDER BY created_at DESC').bind(parseInt(cardsMatch[1])).all();
+					return jsonResponse(results);
+				} catch (e) { return handleError(e); }
+			}
+			if (method === 'POST') {
+				try {
+					const body = await request.json() as any;
+					if (!body.type || !body.message) return jsonResponse({ error: 'Brak pól' }, 400);
+					await db.prepare('INSERT INTO user_cards (user_id, type, message) VALUES (?, ?, ?)').bind(parseInt(cardsMatch[1]), body.type, body.message).run();
+					return jsonResponse({ success: true });
+				} catch (e) { return handleError(e); }
+			}
+		}
+
+		// DELETE /api/panel/cards/:id
+		const cardDelMatch = url.pathname.match(/^\/api\/panel\/cards\/(\d+)$/);
+		if (cardDelMatch && method === 'DELETE') {
+			if (!isPanelAuth()) return jsonResponse({ error: 'Brak autoryzacji' }, 401);
+			const db = env.jimbo77_community_db;
+			if (!db) return jsonResponse({ error: 'DB' }, 500);
+			try {
+				await db.prepare('DELETE FROM user_cards WHERE id = ?').bind(parseInt(cardDelMatch[1])).run();
+				return jsonResponse({ success: true });
+			} catch (e) { return handleError(e); }
+		}
+
+		// POST /api/panel/users/:id/message
+		const msgMatch = url.pathname.match(/^\/api\/panel\/users\/(\d+)\/message$/);
+		if (msgMatch && method === 'POST') {
+			if (!isPanelAuth()) return jsonResponse({ error: 'Brak autoryzacji' }, 401);
+			const db = env.jimbo77_community_db;
+			if (!db) return jsonResponse({ error: 'DB' }, 500);
+			try {
+				const body = await request.json() as any;
+				if (!body.subject || !body.message) return jsonResponse({ error: 'Brak pól' }, 400);
+				const user = await db.prepare('SELECT email, username FROM users WHERE id = ?').bind(parseInt(msgMatch[1])).first<{email:string;username:string}>();
+				if (!user) return jsonResponse({ error: 'Brak użytkownika' }, 404);
+				const html = `<h2>${body.subject}</h2><p>Cześć <strong>${user.username}</strong>,</p><p>${body.message.replace(/\n/g,'<br>')}</p><hr><p style="color:#888;font-size:12px">Wiadomość od administratora jimbo77.com</p>`;
+				await sendEmail(user.email, body.subject, html, env);
+				return jsonResponse({ success: true });
+			} catch (e) { return handleError(e); }
+		}
+
+		// GET /api/panel — admin panel data (authenticated via X-Panel-Secret header)
+		if (url.pathname === '/api/panel' && method === 'GET') {
+			try {
+				const panelSecret = request.headers.get('X-Panel-Secret') || '';
+				const expectedSecret = (env as any).PANEL_SECRET || '';
+				if (!expectedSecret || panelSecret !== expectedSecret) {
+					return jsonResponse({ error: 'Brak autoryzacji' }, 401);
+				}
+
+				const db = env.jimbo77_community_db;
+				if (!db) return jsonResponse({ error: 'DB not available' }, 500);
+
+				const [
+					userCount, postCount, commentCount, listingCount, newsCount, sessionCount,
+					users, recentPosts, recentAudit, listings,
+					postsChart, commentsChart, usersChart, allCards
+				] = await Promise.all([
+					db.prepare('SELECT COUNT(*) as count FROM users').first<number>('count'),
+					db.prepare('SELECT COUNT(*) as count FROM posts').first<number>('count'),
+					db.prepare('SELECT COUNT(*) as count FROM comments').first<number>('count'),
+					db.prepare('SELECT COUNT(*) as count FROM listings').first<number>('count'),
+					db.prepare('SELECT COUNT(*) as count FROM community_news').first<number>('count'),
+					db.prepare('SELECT COUNT(*) as count FROM sessions WHERE expires_at > ?').bind(Date.now()).first<number>('count'),
+					db.prepare('SELECT id, username, email, role, verified, created_at, avatar_url, bio, location FROM users ORDER BY created_at DESC LIMIT 100').all(),
+					db.prepare('SELECT posts.id, posts.title, posts.created_at, posts.view_count, users.username FROM posts LEFT JOIN users ON posts.author_id = users.id ORDER BY posts.created_at DESC LIMIT 20').all(),
+					db.prepare('SELECT audit_logs.*, users.username FROM audit_logs LEFT JOIN users ON audit_logs.user_id = users.id ORDER BY audit_logs.created_at DESC LIMIT 50').all(),
+					db.prepare('SELECT listings.*, users.username FROM listings LEFT JOIN users ON listings.author_id = users.id ORDER BY listings.created_at DESC LIMIT 20').all(),
+					db.prepare("SELECT date(created_at) as day, COUNT(*) as count FROM posts WHERE created_at >= date('now','-30 days') GROUP BY day ORDER BY day").all(),
+					db.prepare("SELECT date(created_at) as day, COUNT(*) as count FROM comments WHERE created_at >= date('now','-30 days') GROUP BY day ORDER BY day").all(),
+					db.prepare("SELECT date(created_at) as day, COUNT(*) as count FROM users WHERE created_at >= date('now','-30 days') GROUP BY day ORDER BY day").all(),
+					db.prepare('SELECT user_cards.*, users.username FROM user_cards LEFT JOIN users ON user_cards.user_id = users.id ORDER BY user_cards.created_at DESC').all(),
+				]);
+
+				return jsonResponse({
+					stats: {
+						users: userCount,
+						posts: postCount,
+						comments: commentCount,
+						listings: listingCount,
+						news: newsCount,
+						activeSessions: sessionCount,
+					},
+					users: users.results,
+					recentPosts: recentPosts.results,
+					auditLogs: recentAudit.results,
+					listings: listings.results,
+					charts: {
+						posts: postsChart.results,
+						comments: commentsChart.results,
+						users: usersChart.results,
+					},
+					cards: allCards.results,
+				});
 			} catch (e) {
 				return handleError(e);
 			}

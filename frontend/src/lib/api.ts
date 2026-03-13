@@ -18,6 +18,10 @@ export function getSecurityHeaders(method: string, contentType?: string | null):
 	if (contentType !== null) {
 		headers['Content-Type'] = contentType ?? 'application/json';
 	}
+	if (['POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
+		headers['X-Timestamp'] = String(Math.floor(Date.now() / 1000));
+		headers['X-Nonce'] = crypto.randomUUID();
+	}
 	return headers;
 }
 
